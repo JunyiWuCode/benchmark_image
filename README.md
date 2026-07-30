@@ -92,3 +92,11 @@ only for integration smoke tests and never produce official benchmark numbers.
 Each benchmark writes a `timing.json` containing generation and scoring wall
 times. Generation time is the distributed critical-path estimate for that
 benchmark; scoring time is measured around the complete scorer stage.
+
+To rerun selected scorers without regenerating images:
+
+```bash
+torchrun --nproc_per_node 8 -m benchmark_image.score_existing \
+  --root /path/to/benchmark/iter_1000/step_4 \
+  --benchmarks ocr,cvtg,longtext_en
+```

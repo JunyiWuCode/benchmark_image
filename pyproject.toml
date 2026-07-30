@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 benchmark-image = "benchmark_image.cli:main"
+benchmark-image-score = "benchmark_image.score_existing:main"
 
 [tool.setuptools]
 include-package-data = true
@@ -24,4 +25,3 @@ include = ["benchmark_image*"]
 
 [tool.setuptools.package-data]
 benchmark_image = ["assets/**/*.json", "assets/**/*.jsonl", "assets/**/*.txt", "workers/*.py"]
-
