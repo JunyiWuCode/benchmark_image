@@ -38,6 +38,11 @@ See [`docs/INSTALL_FAR_CLUSTER.md`](docs/INSTALL_FAR_CLUSTER.md) for the tested
 environment matrix, all required weights, path overrides, and a read-only
 verification command.
 
+See
+[`docs/ANYFLOW_TRAINING_EVAL.md`](docs/ANYFLOW_TRAINING_EVAL.md)
+for the complete AnyFlow ZImage YAML, `torchrun`, full-size training-loop
+smoke, output verification, and score-only rerun workflow.
+
 Heavy and mutually conflicting scorer dependencies are intentionally excluded
 from this package. `evaluate_generated_suite` starts each scorer with its
 configured Python interpreter. On FAR clusters, two roots are sufficient:
