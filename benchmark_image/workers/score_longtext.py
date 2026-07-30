@@ -163,8 +163,27 @@ class ImageEvaluator:
         )
         trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
         outputs = self.processor.batch_decode(trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        stop_token_ids = set()
+        for token_id in (
+            self.processor.tokenizer.eos_token_id,
+            self.processor.tokenizer.pad_token_id,
+        ):
+            if isinstance(token_id, (list, tuple, set)):
+                stop_token_ids.update(token_id)
+            elif token_id is not None:
+                stop_token_ids.add(token_id)
+
+        def effective_token_count(token_ids):
+            for index, token_id in enumerate(token_ids.tolist()):
+                if token_id in stop_token_ids:
+                    return index
+            return len(token_ids)
+
         return [
-            (clean_and_remove_hallucinations(output), len(token_ids))
+            (
+                clean_and_remove_hallucinations(output),
+                effective_token_count(token_ids),
+            )
             for output, token_ids in zip(outputs, trimmed)
         ]
 
