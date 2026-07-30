@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "benchmark-image"
+version = "0.1.0"
+description = "Reproducible full-suite benchmarks for text-to-image generators"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = [
+  "Pillow>=10",
+]
+
+[project.scripts]
+benchmark-image = "benchmark_image.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["benchmark_image*"]
+
+[tool.setuptools.package-data]
+benchmark_image = ["assets/**/*.json", "assets/**/*.jsonl", "assets/**/*.txt", "workers/*.py"]
+
