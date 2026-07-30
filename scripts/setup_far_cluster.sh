@@ -79,6 +79,37 @@ require_python() {
   echo "OK ENV: ${env_name} (${python})"
 }
 
+clone_if_missing() {
+  local destination="$1"
+  local repository="$2"
+  local revision="$3"
+  local required_file="$4"
+  if [[ -f "${destination}/${required_file}" ]]; then
+    return
+  fi
+  if [[ -e "${destination}" ]]; then
+    echo "Incomplete dependency checkout: ${destination}" >&2
+    echo "Remove or repair it before rerunning setup." >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "${destination}")"
+  git init -q "${destination}"
+  git -C "${destination}" remote add origin "${repository}"
+  git -C "${destination}" fetch -q --depth 1 origin "${revision}"
+  git -C "${destination}" checkout -q --detach FETCH_HEAD
+}
+
+download_if_missing() {
+  local destination="$1"
+  local url="$2"
+  if [[ -f "${destination}" ]]; then
+    return
+  fi
+  mkdir -p "$(dirname "${destination}")"
+  curl -L --fail --retry 3 --retry-delay 5 "${url}" -o "${destination}.tmp"
+  mv "${destination}.tmp" "${destination}"
+}
+
 if [[ ! -x "${main_python}" ]]; then
   echo "AnyFlow Python is not executable: ${main_python}" >&2
   exit 1
@@ -90,6 +121,21 @@ fi
 
 if [[ "${verify_only}" == "0" ]]; then
   "${main_python}" -m pip install --no-deps --upgrade "${repo_root}"
+  clone_if_missing \
+    "${far_rl_root}/third_party/HPSv3-PlusPlus" \
+    "https://github.com/PlantPotatoOnMoon/HPSv3-PlusPlus.git" \
+    "6a095f68ee98330bf22365f872ed609bd44a216f" \
+    "hpsv3/inference.py"
+  clone_if_missing \
+    "${far_rl_root}/third_party/reference_repos/GenEval2" \
+    "https://github.com/facebookresearch/GenEval2.git" \
+    "a6e82d2289e8d418f27f0adee77908b07060eea3" \
+    "evaluation.py"
+  clone_if_missing \
+    "${far_rl_root}/third_party/reward-server/mmdetection" \
+    "https://github.com/open-mmlab/mmdetection.git" \
+    "v2.28.2" \
+    "configs/mask2former/mask2former_swin-s-p4-w7-224_lsj_8x2_50e_coco.py"
   if [[ ! -f "${far_rl_root}/hps_ckpt/HPS_v2.1_compressed.pt" \
      || ! -f "${far_rl_root}/hps_ckpt/open_clip_pytorch_model.bin" \
      || ! -f "${far_rl_root}/benchmark_assets/sac+logos+ava1-l14-linearMSE.pth" \
@@ -110,6 +156,9 @@ if [[ "${verify_only}" == "0" ]]; then
       Junjun2333/HPSv3-PlusPlus hpsv3++.pth \
       --local-dir "$(dirname "${hps3_checkpoint}")"
   fi
+  download_if_missing \
+    "${far_rl_root}/third_party/reward-server/model/mask2former2/mask2former_swin-s-p4-w7-224_lsj_8x2_50e_coco.pth" \
+    "https://download.openmmlab.com/mmdetection/v2.0/mask2former/mask2former_swin-s-p4-w7-224_lsj_8x2_50e_coco/mask2former_swin-s-p4-w7-224_lsj_8x2_50e_coco_20220504_001756-743b7d99.pth"
 fi
 
 status=0
