@@ -56,6 +56,13 @@ default scorer batch sizes are 16 for HPSv2/Aesthetic/CLIPScore, 8 for
 HPSv3++, 16 for OCR, 32 for CVTG, and 4 for LongText Qwen2.5-VL. Override them
 under `benchmark_cfg.scorers` when memory permits.
 
+The original X-Omni LongText script allows 1,024 generated OCR tokens. The
+English protocol contains at most 66 ground-truth words, while unconstrained
+Qwen decoding can enter long repetition loops. This package defaults to 256
+tokens and records `max_generated_tokens` plus `num_generation_cap_hits`.
+Set `longtext_max_new_tokens: 1024` for byte-for-byte generation-parameter
+parity with the original script.
+
 ## AnyFlow configuration
 
 ```yaml
