@@ -210,33 +210,37 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             _barrier()
 
         elif benchmark == "geneval":
-            if rank == 0:
-                scoring = root / benchmark / "scoring"
-                scoring.mkdir(parents=True, exist_ok=True)
-                geneval_root = Path(config["geneval_root"])
-                command = [
-                    str(config["geneval_python"]),
-                    str(geneval_root / "evaluation" / "evaluate_images.py"),
-                    str(root / benchmark / "generation" / "geneval_images"),
-                    "--outfile", str(scoring / "geneval_official_results.jsonl"),
+            scoring = root / benchmark / "scoring"
+            scoring.mkdir(parents=True, exist_ok=True)
+            _run_worker(
+                str(config["geneval_python"]),
+                "score_geneval.py",
+                [
+                    "--image-root", str(root / benchmark / "generation" / "geneval_images"),
+                    "--output-dir", str(scoring),
+                    "--geneval-root", str(config["geneval_root"]),
                     "--model-config", str(config["geneval_model_config"]),
                     "--model-path", str(config["geneval_model_path"]),
-                ]
-                env = os.environ.copy()
-                env["CUDA_VISIBLE_DEVICES"] = str(local_rank)
-                env.pop("RANK", None)
-                env.pop("WORLD_SIZE", None)
-                env.pop("LOCAL_RANK", None)
-                subprocess.run(command, check=True, env=env)
-                summarize = [
-                    str(config["geneval_python"]),
-                    str(WORKER_ROOT.joinpath("summarize_geneval.py")),
-                    "--results", str(scoring / "geneval_official_results.jsonl"),
-                    "--output", str(scoring / "summary.json"),
+                    "--rank", str(rank),
+                    "--world-size", str(world_size),
+                ],
+                local_rank,
+            )
+            _barrier()
+            if rank == 0:
+                merge_args = [
+                    "--merge",
+                    "--output-dir", str(scoring),
+                    "--world-size", str(world_size),
                 ]
                 if allow_partial:
-                    summarize.append("--allow-partial")
-                subprocess.run(summarize, check=True, env=env)
+                    merge_args.append("--allow-partial")
+                _run_worker(
+                    str(config["geneval_python"]),
+                    "score_geneval.py",
+                    merge_args,
+                    local_rank,
+                )
             _barrier()
 
         elif benchmark == "cvtg":
@@ -294,25 +298,19 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             _barrier()
 
         elif benchmark == "geneval2":
-            if rank == 0:
-                generation = root / benchmark / "generation"
-                scoring = root / benchmark / "scoring"
-                scoring.mkdir(parents=True, exist_ok=True)
-                rows = [
-                    json.loads(line)
-                    for line in manifest.read_text(encoding="utf-8").splitlines()
-                    if line.strip()
-                ]
-                mapping = {row["prompt"]: str(Path(row["image_path"]).resolve()) for row in rows}
-                expected = 800 if not allow_partial else len(rows)
-                if len(mapping) != expected:
-                    raise RuntimeError(f"GenEval2 prompt/image mapping has {len(mapping)} entries, expected {expected}.")
-                mapping_path = generation / "image_paths.json"
-                mapping_path.write_text(json.dumps(mapping, indent=2, ensure_ascii=False), encoding="utf-8")
-                benchmark_data = Path(config["geneval2_benchmark_data"])
-                if allow_partial:
-                    benchmark_data = generation / "benchmark_data_partial.jsonl"
-                    ordered_rows = sorted(rows, key=lambda row: int(row["prompt_index"]))
+            generation = root / benchmark / "generation"
+            scoring = root / benchmark / "scoring"
+            scoring.mkdir(parents=True, exist_ok=True)
+            rows = [
+                json.loads(line)
+                for line in manifest.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            benchmark_data = Path(config["geneval2_benchmark_data"])
+            if allow_partial:
+                benchmark_data = generation / "benchmark_data_partial.jsonl"
+                ordered_rows = sorted(rows, key=lambda row: int(row["prompt_index"]))
+                if rank == 0:
                     benchmark_data.write_text(
                         "".join(
                             json.dumps(row["metadata"], ensure_ascii=False) + "\n"
@@ -320,35 +318,37 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                         ),
                         encoding="utf-8",
                     )
-                geneval2_root = Path(config["geneval2_root"])
-                score_path = scoring / "score_lists.json"
-                env = os.environ.copy()
-                env["CUDA_VISIBLE_DEVICES"] = str(local_rank)
-                env.pop("RANK", None)
-                env.pop("WORLD_SIZE", None)
-                env.pop("LOCAL_RANK", None)
-                subprocess.run(
-                    [
-                        str(config["geneval2_python"]),
-                        str(geneval2_root / "evaluation.py"),
-                        "--benchmark_data", str(benchmark_data),
-                        "--image_filepath_data", str(mapping_path),
-                        "--method", "soft_tifa_gm",
-                        "--output_file", str(score_path),
-                    ],
-                    check=True,
-                    env=env,
-                )
-                summary_command = [
-                    str(config["geneval2_python"]),
-                    str(WORKER_ROOT.joinpath("summarize_geneval2.py")),
-                    "--benchmark_data", str(benchmark_data),
-                    "--score_data", str(score_path),
-                    "--output_json", str(scoring / "summary.json"),
+                _barrier()
+            _run_worker(
+                str(config["geneval2_python"]),
+                "score_geneval2.py",
+                [
+                    "--results", str(manifest),
+                    "--output-dir", str(scoring),
+                    "--geneval2-root", str(config["geneval2_root"]),
+                    "--benchmark-data", str(benchmark_data),
+                    "--rank", str(rank),
+                    "--world-size", str(world_size),
+                ],
+                local_rank,
+            )
+            _barrier()
+            if rank == 0:
+                merge_args = [
+                    "--merge",
+                    "--results", str(manifest),
+                    "--output-dir", str(scoring),
+                    "--benchmark-data", str(benchmark_data),
+                    "--world-size", str(world_size),
                 ]
                 if allow_partial:
-                    summary_command.append("--allow_partial")
-                subprocess.run(summary_command, check=True, env=env)
+                    merge_args.append("--allow-partial")
+                _run_worker(
+                    str(config["geneval2_python"]),
+                    "score_geneval2.py",
+                    merge_args,
+                    local_rank,
+                )
             _barrier()
 
         if rank == 0:

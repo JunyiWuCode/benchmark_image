@@ -51,10 +51,12 @@ scorers:
 Individual Python, checkpoint, model, and batch-size settings can override the
 derived defaults.
 
-All scorers except GenEval and GenEval2 use distributed batch inference. The
-default scorer batch sizes are 16 for HPSv2/Aesthetic/CLIPScore, 8 for
-HPSv3++, 16 for OCR, 32 for CVTG, and 4 for LongText Qwen2.5-VL. Override them
-under `benchmark_cfg.scorers` when memory permits.
+All scorers use all distributed ranks. GenEval and GenEval2 preserve their
+official per-image/per-question evaluator calls but shard the official inputs
+across ranks and restore the canonical order at merge time. The default scorer
+batch sizes are 16 for HPSv2/Aesthetic/CLIPScore, 8 for HPSv3++, 16 for OCR,
+32 for CVTG, and 4 for LongText Qwen2.5-VL. Override them under
+`benchmark_cfg.scorers` when memory permits.
 
 The original X-Omni LongText script allows 1,024 generated OCR tokens. The
 English protocol contains at most 66 ground-truth words, while unconstrained
