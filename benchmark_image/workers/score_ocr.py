@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import os
 import re
@@ -57,6 +58,21 @@ def flowopd_score(prediction: str, prompt: str) -> float:
 
 def patch_paddlex_headless_cv() -> None:
     import cv2
+
+    current_version = importlib.metadata.version
+    if not getattr(current_version, "_benchmark_image_headless_alias", False):
+        original_version = current_version
+
+        def version_with_headless_alias(distribution_name: str) -> str:
+            try:
+                return original_version(distribution_name)
+            except importlib.metadata.PackageNotFoundError:
+                if distribution_name == "opencv-contrib-python":
+                    return original_version("opencv-contrib-python-headless")
+                raise
+
+        version_with_headless_alias._benchmark_image_headless_alias = True
+        importlib.metadata.version = version_with_headless_alias
 
     try:
         from paddlex.utils import deps
