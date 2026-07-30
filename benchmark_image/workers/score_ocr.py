@@ -56,6 +56,8 @@ def flowopd_score(prediction: str, prompt: str) -> float:
 
 
 def patch_paddlex_headless_cv() -> None:
+    import cv2
+
     try:
         from paddlex.utils import deps
     except Exception:
@@ -73,6 +75,16 @@ def patch_paddlex_headless_cv() -> None:
 
     deps.is_dep_available = available
 
+    # Importing paddlex.utils may eagerly cache the image reader before the
+    # dependency alias above is installed. Ensure that cached module receives
+    # the headless OpenCV binding as well.
+    try:
+        from paddlex.inference.common.reader import image_reader
+
+        image_reader.cv2 = cv2
+    except Exception:
+        pass
+
 
 def build_ocr(args):
     if args.require_paddleocr_3_3_3:
@@ -83,6 +95,7 @@ def build_ocr(args):
     os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
     patch_paddlex_headless_cv()
     from paddleocr import PaddleOCR
+    patch_paddlex_headless_cv()
 
     kwargs = {
         "lang": "en",
@@ -202,4 +215,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
