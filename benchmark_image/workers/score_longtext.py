@@ -133,31 +133,50 @@ class ImageEvaluator:
                 f"{len(bad)} tensors are elsewhere: {sample}"
             )
 
-    def qwen_ocr(self, image):
-        message = [{"role": "user", "content": [
-            {"type": "image", "image": image},
-            {"type": "text", "text": QWEN_PROMPT},
-        ]}]
-        texts = self.processor.apply_chat_template(message, tokenize=False, add_generation_prompt=True)
-        image_inputs, _ = process_vision_info(message)
-        inputs = self.processor(text=texts, images=image_inputs, padding=True, return_tensors="pt").to(self.device)
+    def qwen_ocr_batch(self, images):
+        messages = [
+            [{"role": "user", "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": QWEN_PROMPT},
+            ]}]
+            for image in images
+        ]
+        texts = [
+            self.processor.apply_chat_template(
+                message,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            for message in messages
+        ]
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self.processor(
+            text=texts,
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        ).to(self.device)
         generated_ids = self.model.generate(**inputs, max_new_tokens=1024)
         trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
         outputs = self.processor.batch_decode(trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        return clean_and_remove_hallucinations(outputs[0])
+        return [clean_and_remove_hallucinations(output) for output in outputs]
 
-    def evaluate(self, chunk):
+    def evaluate(self, chunk, batch_size):
         out = []
         with torch.no_grad():
-            for data in tqdm(chunk):
-                out.append({
-                    "image": data["image"],
-                    "prompt": data["prompt"],
-                    "ocr_gt": data["text"],
-                    "category": data.get("category", ""),
-                    "prompt_id": data.get("prompt_id", ""),
-                    "ocr_results": self.qwen_ocr(data["image"]),
-                })
+            for start in tqdm(range(0, len(chunk), batch_size)):
+                batch = chunk[start:start + batch_size]
+                predictions = self.qwen_ocr_batch([data["image"] for data in batch])
+                for data, prediction in zip(batch, predictions):
+                    out.append({
+                        "image": data["image"],
+                        "prompt": data["prompt"],
+                        "ocr_gt": data["text"],
+                        "category": data.get("category", ""),
+                        "prompt_id": data.get("prompt_id", ""),
+                        "ocr_results": prediction,
+                    })
         return out
 
 
@@ -229,7 +248,7 @@ def score_shard(args):
 
     evaluator = ImageEvaluator(device)
     print(f"=== rank {rank}: OCR {len(chunk)} images ===")
-    chunk_results = evaluator.evaluate(chunk)
+    chunk_results = evaluator.evaluate(chunk, args.batch_size)
     chunk_path = os.path.join(args.output_dir, f"results_chunk{rank}.jsonl")
     with open(chunk_path, "w", encoding="utf-8") as f:
         for r in chunk_results:
@@ -258,6 +277,7 @@ if __name__ == "__main__":
     parser.add_argument("--global_seed", type=int, default=42)
     parser.add_argument("--rank", type=int, default=0)
     parser.add_argument("--world_size", type=int, required=True)
+    parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--merge", action="store_true")
     parser.add_argument("--allow_partial", action="store_true")
     args = parser.parse_args()

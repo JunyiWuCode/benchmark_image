@@ -278,6 +278,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             common = [
                 "--results", str(manifest), "--output_dir", str(scoring),
                 "--world_size", str(world_size), "--rank", str(rank), "--mode", "en",
+                "--batch_size", str(int(config.get("longtext_batch_size", 4))),
             ]
             _run_worker(str(config["longtext_python"]), "score_longtext.py", common, local_rank)
             _barrier()

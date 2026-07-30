@@ -51,6 +51,11 @@ scorers:
 Individual Python, checkpoint, model, and batch-size settings can override the
 derived defaults.
 
+All scorers except GenEval and GenEval2 use distributed batch inference. The
+default scorer batch sizes are 16 for HPSv2/Aesthetic/CLIPScore, 8 for
+HPSv3++, 16 for OCR, 32 for CVTG, and 4 for LongText Qwen2.5-VL. Override them
+under `benchmark_cfg.scorers` when memory permits.
+
 ## AnyFlow configuration
 
 ```yaml
