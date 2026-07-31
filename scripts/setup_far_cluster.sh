@@ -121,15 +121,17 @@ fi
 
 if [[ "${verify_only}" == "0" ]]; then
   "${main_python}" -m pip install --no-deps --upgrade "${repo_root}"
-  if ! OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
-    "${main_python}" -c \
-    'from hpsv2.src.open_clip import create_model_and_transforms, get_tokenizer' \
-    >/dev/null 2>&1; then
-    # HPSv2 scoring runs in the AnyFlow environment. Install only its source
-    # package so benchmark setup cannot replace the training CUDA/Torch stack.
-    "${main_python}" -m pip install --no-deps \
-      'hpsv2==1.2.0' 'clint==0.5.1' 'args==0.1.0'
-  fi
+  clone_if_missing \
+    "${far_rl_root}/third_party/reference_repos/HPSv2" \
+    "https://github.com/tgxs002/HPSv2.git" \
+    "866735ecaae999fa714bd9edfa05aa2672669ee3" \
+    "hpsv2/src/open_clip/bpe_simple_vocab_16e6.txt.gz"
+  # The PyPI HPSv2 wheel omits the tokenizer BPE file. Use the pinned source
+  # checkout in editable mode while leaving the training CUDA/Torch stack alone.
+  "${main_python}" -m pip install --no-deps \
+    'clint==0.5.1' 'args==0.1.0'
+  "${main_python}" -m pip install --no-deps --editable \
+    "${far_rl_root}/third_party/reference_repos/HPSv2"
   clone_if_missing \
     "${far_rl_root}/third_party/HPSv3-PlusPlus" \
     "https://github.com/PlantPotatoOnMoon/HPSv3-PlusPlus.git" \
@@ -185,6 +187,7 @@ for path in \
   "${far_rl_root}/hps_ckpt/HPS_v2.1_compressed.pt" \
   "${far_rl_root}/hps_ckpt/open_clip_pytorch_model.bin" \
   "${far_rl_root}/benchmark_assets/sac+logos+ava1-l14-linearMSE.pth" \
+  "${far_rl_root}/third_party/reference_repos/HPSv2/hpsv2/src/open_clip/bpe_simple_vocab_16e6.txt.gz" \
   "${far_rl_root}/third_party/HPSv3-PlusPlus/hpsv3/config/train_stage2.yaml" \
   "${far_rl_root}/third_party/HPSv3-PlusPlus/checkpoints/hpsv3++.pth" \
   "${far_rl_root}/third_party/reference_repos/geneval/evaluation/evaluate_images.py" \
