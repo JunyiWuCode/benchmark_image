@@ -83,6 +83,9 @@ def _broadcast(metrics):
 def _run_worker(python: str, worker: str, args: list[str], local_rank: int) -> None:
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(local_rank)
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    env["OMP_NUM_THREADS"] = "1"
+    env["MKL_NUM_THREADS"] = "1"
     env.pop("RANK", None)
     env.pop("WORLD_SIZE", None)
     env.pop("LOCAL_RANK", None)

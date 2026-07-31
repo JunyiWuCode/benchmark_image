@@ -121,6 +121,15 @@ fi
 
 if [[ "${verify_only}" == "0" ]]; then
   "${main_python}" -m pip install --no-deps --upgrade "${repo_root}"
+  if ! OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+    "${main_python}" -c \
+    'from hpsv2.src.open_clip import create_model_and_transforms, get_tokenizer' \
+    >/dev/null 2>&1; then
+    # HPSv2 scoring runs in the AnyFlow environment. Install only its source
+    # package so benchmark setup cannot replace the training CUDA/Torch stack.
+    "${main_python}" -m pip install --no-deps \
+      'hpsv2==1.2.0' 'clint==0.5.1' 'args==0.1.0'
+  fi
   clone_if_missing \
     "${far_rl_root}/third_party/HPSv3-PlusPlus" \
     "https://github.com/PlantPotatoOnMoon/HPSv3-PlusPlus.git" \
@@ -191,11 +200,15 @@ if [[ "${status}" != "0" ]]; then
   exit 1
 fi
 
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 "${main_python}" - <<'PY'
 from benchmark_image import BENCHMARKS, expected_image_count
+from hpsv2.src.open_clip import create_model_and_transforms, get_tokenizer
+from transformers import CLIPModel, CLIPProcessor
 
 names = tuple(BENCHMARKS)
 print(f"benchmark_image import OK: {names}")
+print("HPSv2/Aesthetic/CLIPScore imports OK")
 print(f"full suite images per NFE: {expected_image_count(names)}")
 PY
 
