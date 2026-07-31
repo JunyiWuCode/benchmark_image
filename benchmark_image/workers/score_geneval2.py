@@ -42,10 +42,6 @@ def score(args) -> None:
         ),
         encoding="utf-8",
     )
-    score_path = output / f"score_lists_rank_{args.rank:05d}.json"
-    if not selected:
-        score_path.write_text("[]", encoding="utf-8")
-        return
     subprocess.run(
         [
             sys.executable,
@@ -57,7 +53,7 @@ def score(args) -> None:
             "--method",
             "soft_tifa_gm",
             "--output_file",
-            str(score_path),
+            str(output / f"score_lists_rank_{args.rank:05d}.json"),
         ],
         check=True,
     )
