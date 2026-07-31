@@ -16,7 +16,7 @@ assets through FAR-RL, and verify every isolated scorer environment and weight.
 
 Options:
   --far-rl-root PATH    FAR-RL checkout containing scorer assets
-  --conda-env-root PATH Root containing the six benchmark conda environments
+  --conda-env-root PATH Root containing the isolated scorer environments
   --main-python PATH    Python used by AnyFlow
   --verify-only         Do not install or download; only run strict checks
   -h, --help            Show this help
@@ -173,8 +173,8 @@ if [[ "${verify_only}" == "0" ]]; then
 fi
 
 status=0
+echo "OK MAIN PYTHON: ${main_python}"
 for env_name in \
-  far-anyflow15 \
   hpsv3pp \
   paddleocr_gpu_official \
   longtext_ocr \
