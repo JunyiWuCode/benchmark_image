@@ -49,8 +49,8 @@ configured Python interpreter. On FAR clusters, two roots are sufficient:
 
 ```yaml
 scorers:
-  far_rl_root: /home/hcai/workspace/code/junyiwu/FAR-RL
-  conda_env_root: /home/hcai/workspace/anaconda3/envs
+  far_rl_root: /path/to/FAR-RL
+  conda_env_root: /path/to/conda/envs
 ```
 
 Individual Python, checkpoint, model, and batch-size settings can override the
@@ -95,8 +95,8 @@ val:
     use_ema_for_metrics: true
     allow_partial: false
     scorers:
-      far_rl_root: /home/hcai/workspace/code/junyiwu/FAR-RL
-      conda_env_root: /home/hcai/workspace/anaconda3/envs
+      far_rl_root: /path/to/FAR-RL
+      conda_env_root: /path/to/conda/envs
 ```
 
 Production runs must use `allow_partial: false`. The

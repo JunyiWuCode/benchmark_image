@@ -5,12 +5,12 @@ AnyFlow ZImage training YAML, and runs evaluation from the real training loop.
 The tested FAR layout is:
 
 ```text
-/home/hcai/workspace/code/junyiwu/
+/path/to/workspace/
 ├── FAR-Anyflow1.5
 ├── FAR-RL
 └── benchmark_image
 
-/home/hcai/workspace/anaconda3/envs/
+/path/to/conda/envs/
 ├── far-anyflow15
 ├── hpsv3pp
 ├── paddleocr_gpu_official
@@ -34,16 +34,16 @@ HumanAES is intentionally excluded.
 ## 1. Clone the repositories
 
 ```bash
-cd /home/hcai/workspace/code/junyiwu
+cd /path/to/workspace
 
 git clone \
-  --branch junyiwu/anyflow-image-v1.5-dev \
-  git@github.com:dc-ai-projects/FAR-Dev.git \
+  --branch <anyflow-branch> \
+  <training-repository-url> \
   FAR-Anyflow1.5
 
 git clone \
-  --branch feature/anyflow-RL \
-  git@github.com:dc-ai-projects/FAR-Dev.git \
+  --branch <far-rl-branch> \
+  <training-repository-url> \
   FAR-RL
 
 git clone \
@@ -55,9 +55,9 @@ If a checkout already exists, inspect its branch and worktree instead of
 cloning over it:
 
 ```bash
-git -C /home/hcai/workspace/code/junyiwu/FAR-Anyflow1.5 status --short --branch
-git -C /home/hcai/workspace/code/junyiwu/FAR-RL status --short --branch
-git -C /home/hcai/workspace/code/junyiwu/benchmark_image status --short --branch
+git -C /path/to/workspace/FAR-Anyflow1.5 status --short --branch
+git -C /path/to/workspace/FAR-RL status --short --branch
+git -C /path/to/workspace/benchmark_image status --short --branch
 ```
 
 ## 2. Install and verify the benchmark
@@ -65,14 +65,14 @@ git -C /home/hcai/workspace/code/junyiwu/benchmark_image status --short --branch
 Activate the Python environment used by AnyFlow:
 
 ```bash
-source /home/hcai/workspace/anaconda3/etc/profile.d/conda.sh
+source /path/to/conda/etc/profile.d/conda.sh
 conda activate far-anyflow15
 ```
 
 Run the cluster setup:
 
 ```bash
-cd /home/hcai/workspace/code/junyiwu/benchmark_image
+cd /path/to/workspace/benchmark_image
 bash scripts/setup_far_cluster.sh
 ```
 
@@ -84,7 +84,7 @@ environment.
 Before every long training run, use the read-only preflight:
 
 ```bash
-cd /home/hcai/workspace/code/junyiwu/benchmark_image
+cd /path/to/workspace/benchmark_image
 bash scripts/setup_far_cluster.sh --verify-only
 ```
 
@@ -138,8 +138,8 @@ val:
     use_ema_for_metrics: true
     allow_partial: false
     scorers:
-      far_rl_root: /home/hcai/workspace/code/junyiwu/FAR-RL
-      conda_env_root: /home/hcai/workspace/anaconda3/envs
+      far_rl_root: /path/to/workspace/FAR-RL
+      conda_env_root: /path/to/conda/envs
       longtext_max_new_tokens: 256
 ```
 
@@ -172,8 +172,8 @@ global batch from measured GPU memory rather than copying the training batch.
 On one eight-GPU node:
 
 ```bash
-cd /home/hcai/workspace/code/junyiwu/FAR-Anyflow1.5
-source /home/hcai/workspace/anaconda3/etc/profile.d/conda.sh
+cd /path/to/workspace/FAR-Anyflow1.5
+source /path/to/conda/etc/profile.d/conda.sh
 conda activate far-anyflow15
 
 torchrun \
