@@ -9,7 +9,6 @@ import re
 from importlib.metadata import version
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 
@@ -139,11 +138,11 @@ def plain_result(raw):
     return raw
 
 
-def recognized_text(raw) -> str:
+def recognized_text(raw, separator: str = "") -> str:
     payload = plain_result(raw)
     if isinstance(payload, dict):
         texts = payload.get("rec_texts") or payload.get("texts") or []
-        return "".join(str(text) for text in texts if str(text).strip())
+        return separator.join(str(text) for text in texts if str(text).strip())
     texts = []
     for item in payload or []:
         detections = item if isinstance(item, list) else [item]
@@ -154,7 +153,7 @@ def recognized_text(raw) -> str:
             text = rec[0] if isinstance(rec, (list, tuple)) else rec
             if str(text).strip():
                 texts.append(str(text))
-    return "".join(texts)
+    return separator.join(texts)
 
 
 def score(args) -> None:

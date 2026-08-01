@@ -133,7 +133,7 @@ def stage_ocr(args) -> None:
             gt = gt_words_from_row(r)
             if not gt:
                 continue
-            pred = str(recognized_text(raw)).lower().split() or [""]
+            pred = str(recognized_text(raw, separator=" ")).lower().split() or [""]
             n_region = int(r.get("metadata", r).get("region_count", 0))
             for w in gt:
                 total += 1
