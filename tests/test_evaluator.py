@@ -24,3 +24,16 @@ def test_worker_bounds_threads_and_removes_distributed_environment(monkeypatch):
     assert "RANK" not in captured["env"]
     assert "WORLD_SIZE" not in captured["env"]
     assert "LOCAL_RANK" not in captured["env"]
+
+
+def test_worker_preserves_parent_cuda_visibility_mapping(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,2,3,4,5,6,7")
+
+    def fake_run(command, *, check, env):
+        captured.update(command=command, check=check, env=env)
+
+    monkeypatch.setattr(evaluator.subprocess, "run", fake_run)
+    evaluator._run_worker("/env/bin/python", "worker.py", [], 2)
+
+    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "3"

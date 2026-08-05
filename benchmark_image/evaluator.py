@@ -82,7 +82,20 @@ def _broadcast(metrics):
 
 def _run_worker(python: str, worker: str, args: list[str], local_rank: int) -> None:
     env = os.environ.copy()
-    env["CUDA_VISIBLE_DEVICES"] = str(local_rank)
+    visible_devices = [
+        device.strip()
+        for device in env.get("CUDA_VISIBLE_DEVICES", "").split(",")
+        if device.strip()
+    ]
+    if visible_devices:
+        if local_rank >= len(visible_devices):
+            raise RuntimeError(
+                f"LOCAL_RANK={local_rank} is outside CUDA_VISIBLE_DEVICES="
+                f"{env['CUDA_VISIBLE_DEVICES']!r}."
+            )
+        env["CUDA_VISIBLE_DEVICES"] = visible_devices[local_rank]
+    else:
+        env["CUDA_VISIBLE_DEVICES"] = str(local_rank)
     env["OPENBLAS_NUM_THREADS"] = "1"
     env["OMP_NUM_THREADS"] = "1"
     env["MKL_NUM_THREADS"] = "1"
