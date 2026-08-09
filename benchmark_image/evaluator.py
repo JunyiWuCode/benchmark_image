@@ -102,9 +102,17 @@ def _run_worker(python: str, worker: str, args: list[str], local_rank: int) -> N
     env["OPENBLAS_NUM_THREADS"] = "1"
     env["OMP_NUM_THREADS"] = "1"
     env["MKL_NUM_THREADS"] = "1"
-    env.pop("RANK", None)
-    env.pop("WORLD_SIZE", None)
-    env.pop("LOCAL_RANK", None)
+    for name in (
+        "RANK",
+        "WORLD_SIZE",
+        "LOCAL_RANK",
+        "LOCAL_WORLD_SIZE",
+        "GROUP_RANK",
+        "GROUP_WORLD_SIZE",
+        "ROLE_RANK",
+        "ROLE_WORLD_SIZE",
+    ):
+        env.pop(name, None)
     subprocess.run([python, str(WORKER_ROOT.joinpath(worker)), *args], check=True, env=env)
 
 
