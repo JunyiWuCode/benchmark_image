@@ -85,22 +85,28 @@ def _broadcast(metrics):
     return metrics
 
 
-def _run_worker(python: str, worker: str, args: list[str], local_rank: int) -> None:
+def _run_worker(
+    python: str,
+    worker: str,
+    args: list[str],
+    local_rank: int | None,
+) -> None:
     env = os.environ.copy()
-    visible_devices = [
-        device.strip()
-        for device in env.get("CUDA_VISIBLE_DEVICES", "").split(",")
-        if device.strip()
-    ]
-    if visible_devices:
-        if local_rank >= len(visible_devices):
-            raise RuntimeError(
-                f"LOCAL_RANK={local_rank} is outside CUDA_VISIBLE_DEVICES="
-                f"{env['CUDA_VISIBLE_DEVICES']!r}."
-            )
-        env["CUDA_VISIBLE_DEVICES"] = visible_devices[local_rank]
-    else:
-        env["CUDA_VISIBLE_DEVICES"] = str(local_rank)
+    if local_rank is not None:
+        visible_devices = [
+            device.strip()
+            for device in env.get("CUDA_VISIBLE_DEVICES", "").split(",")
+            if device.strip()
+        ]
+        if visible_devices:
+            if local_rank >= len(visible_devices):
+                raise RuntimeError(
+                    f"LOCAL_RANK={local_rank} is outside CUDA_VISIBLE_DEVICES="
+                    f"{env['CUDA_VISIBLE_DEVICES']!r}."
+                )
+            env["CUDA_VISIBLE_DEVICES"] = visible_devices[local_rank]
+        else:
+            env["CUDA_VISIBLE_DEVICES"] = str(local_rank)
     env["OPENBLAS_NUM_THREADS"] = "1"
     env["OMP_NUM_THREADS"] = "1"
     env["MKL_NUM_THREADS"] = "1"
@@ -393,15 +399,32 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 "vllm": config["q_judger_vllm_python"],
                 "sglang": config["q_judger_sglang_python"],
             }[q_judger_backend]
+            tensor_parallel_size = int(
+                config.get("q_judger_tensor_parallel_size", 1)
+            )
+            if tensor_parallel_size <= 0:
+                raise ValueError(
+                    "q_judger_tensor_parallel_size must be positive, got "
+                    f"{tensor_parallel_size}."
+                )
+            if tensor_parallel_size > 1 and world_size != 1:
+                raise ValueError(
+                    "Tensor-parallel Q-Judger scoring must use one orchestrator "
+                    "process rather than torchrun."
+                )
+            worker_world_size = 1 if tensor_parallel_size > 1 else world_size
+            worker_rank = 0 if tensor_parallel_size > 1 else rank
+            worker_local_rank = None if tensor_parallel_size > 1 else local_rank
             common = [
                 "--results", str(manifest),
                 "--output-dir", str(scoring),
                 "--qwen-image-bench-root", str(config["qwen_image_bench_root"]),
                 "--model", str(config["q_judger_model"]),
-                "--world-size", str(world_size),
+                "--world-size", str(worker_world_size),
                 "--max-batch-size", str(int(config.get("q_judger_max_batch_size", 24))),
                 "--max-new-tokens", str(int(config.get("q_judger_max_new_tokens", 4096))),
                 "--max-model-len", str(int(config.get("q_judger_max_model_len", 8192))),
+                "--tensor-parallel-size", str(tensor_parallel_size),
                 "--backend", q_judger_backend,
                 "--gpu-memory-utilization",
                 str(float(config.get("q_judger_gpu_memory_utilization", 0.9))),
@@ -409,8 +432,8 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             _run_worker(
                 str(backend_python),
                 "score_qwen_image_bench.py",
-                [*common, "--rank", str(rank)],
-                local_rank,
+                [*common, "--rank", str(worker_rank)],
+                worker_local_rank,
             )
             _barrier()
             if rank == 0:
@@ -421,7 +444,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     str(backend_python),
                     "score_qwen_image_bench.py",
                     merge_args,
-                    local_rank,
+                    worker_local_rank,
                 )
             _barrier()
 
@@ -435,6 +458,11 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "world_size": world_size,
                     "q_judger_backend": (
                         q_judger_backend if benchmark == "qwen_image_bench" else None
+                    ),
+                    "q_judger_tensor_parallel_size": (
+                        tensor_parallel_size
+                        if benchmark == "qwen_image_bench"
+                        else None
                     ),
                 }
             )

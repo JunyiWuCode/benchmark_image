@@ -163,6 +163,7 @@ def score_shard(args) -> None:
             max_batch_size=args.max_batch_size,
             max_new_tokens=args.max_new_tokens,
             max_model_len=args.max_model_len,
+            tensor_parallel_size=args.tensor_parallel_size,
             gpu_memory_utilization=args.gpu_memory_utilization,
         )
         results, parse_failures, parsed_scores, image_failures = (
@@ -262,6 +263,7 @@ def merge_shards(args) -> None:
             "max_batch_size": args.max_batch_size,
             "max_new_tokens": args.max_new_tokens,
             "max_model_len": args.max_model_len,
+            "tensor_parallel_size": args.tensor_parallel_size,
             "gpu_memory_utilization": args.gpu_memory_utilization,
         },
     }
@@ -299,6 +301,7 @@ def main() -> int:
     parser.add_argument("--max-batch-size", type=int, default=24)
     parser.add_argument("--max-new-tokens", type=int, default=4096)
     parser.add_argument("--max-model-len", type=int, default=8192)
+    parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--backend", choices=("pt", "vllm", "sglang"), default="pt")
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     parser.add_argument("--merge", action="store_true")
@@ -308,6 +311,12 @@ def main() -> int:
         raise ValueError(
             f"Invalid rank/world_size: rank={args.rank}, world_size={args.world_size}"
         )
+    if args.tensor_parallel_size <= 0:
+        raise ValueError(
+            f"tensor_parallel_size must be positive, got {args.tensor_parallel_size}."
+        )
+    if args.backend == "pt" and args.tensor_parallel_size != 1:
+        raise ValueError("PtEngine supports tensor_parallel_size=1 only.")
     if args.merge:
         merge_shards(args)
     else:

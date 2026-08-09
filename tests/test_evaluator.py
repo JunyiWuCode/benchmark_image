@@ -49,6 +49,19 @@ def test_worker_preserves_parent_cuda_visibility_mapping(monkeypatch):
     assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "3"
 
 
+def test_tensor_parallel_worker_preserves_all_visible_devices(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+
+    def fake_run(command, *, check, env):
+        captured.update(command=command, check=check, env=env)
+
+    monkeypatch.setattr(evaluator.subprocess, "run", fake_run)
+    evaluator._run_worker("/env/bin/python", "worker.py", [], None)
+
+    assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "0,1,2,3,4,5,6,7"
+
+
 def test_q_judger_defaults_are_isolated_from_training_environment(tmp_path):
     config = evaluator._resolved_config(
         {"far_rl_root": str(tmp_path / "FAR-RL"), "conda_env_root": str(tmp_path / "envs")}

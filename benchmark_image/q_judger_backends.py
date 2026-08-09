@@ -52,6 +52,7 @@ class VllmJudge:
         max_batch_size: int = 24,
         max_new_tokens: int = 4096,
         max_model_len: int = 8192,
+        tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
     ) -> None:
         from transformers import AutoProcessor
@@ -64,6 +65,7 @@ class VllmJudge:
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len,
             max_num_seqs=max_batch_size,
+            tensor_parallel_size=tensor_parallel_size,
             limit_mm_per_prompt={"image": 1},
             seed=42,
         )
@@ -100,6 +102,7 @@ class SglangJudge:
         max_batch_size: int = 24,
         max_new_tokens: int = 4096,
         max_model_len: int = 8192,
+        tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
     ) -> None:
         from sglang import Engine
@@ -110,6 +113,7 @@ class SglangJudge:
             model_path=model_path,
             mem_fraction_static=gpu_memory_utilization,
             context_length=max_model_len,
+            tp_size=tensor_parallel_size,
         )
         self.max_batch_size = max_batch_size
         self.sampling_params = {
@@ -137,6 +141,7 @@ def build_judge(
     max_batch_size: int,
     max_new_tokens: int,
     max_model_len: int,
+    tensor_parallel_size: int,
     gpu_memory_utilization: float,
 ):
     normalized = backend.strip().lower()
@@ -151,5 +156,6 @@ def build_judge(
         max_batch_size=max_batch_size,
         max_new_tokens=max_new_tokens,
         max_model_len=max_model_len,
+        tensor_parallel_size=tensor_parallel_size,
         gpu_memory_utilization=gpu_memory_utilization,
     )
