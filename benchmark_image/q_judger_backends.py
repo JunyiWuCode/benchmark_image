@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,14 @@ def _load_qwen_tokenizer(model_path: str):
     return Qwen2TokenizerFast.from_pretrained(model_path)
 
 
+def _prepend_runtime_bin() -> None:
+    runtime_bin = str(Path(sys.executable).resolve().parent)
+    current_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = os.pathsep.join(
+        part for part in (runtime_bin, current_path) if part
+    )
+
+
 def _vllm_model_compat_path(model_path: str) -> str:
     source = Path(model_path).resolve()
     digest = hashlib.sha256(str(source).encode("utf-8")).hexdigest()[:12]
@@ -99,6 +108,7 @@ class VllmJudge:
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
     ) -> None:
+        _prepend_runtime_bin()
         from vllm import LLM, SamplingParams
 
         compat_path = _vllm_model_compat_path(model_path)
@@ -150,6 +160,7 @@ class SglangJudge:
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
     ) -> None:
+        _prepend_runtime_bin()
         from sglang import Engine
 
         self.processor = _load_qwen_tokenizer(model_path)

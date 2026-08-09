@@ -1,13 +1,25 @@
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
 
 from benchmark_image.q_judger_backends import (
     _openai_messages,
+    _prepend_runtime_bin,
     _render_prompt,
     _vllm_model_compat_path,
 )
+
+
+def test_prepend_runtime_bin(monkeypatch):
+    monkeypatch.setenv("PATH", "/usr/bin")
+    _prepend_runtime_bin()
+    assert os.environ["PATH"].split(os.pathsep) == [
+        str(Path(sys.executable).resolve().parent),
+        "/usr/bin",
+    ]
 
 
 def test_openai_messages_replace_exactly_one_image_marker():
