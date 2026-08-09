@@ -21,18 +21,33 @@ if [[ ! -x "${env_prefix}/bin/python" ]]; then
 fi
 
 python="${env_prefix}/bin/python"
-if ! "${python}" -c 'import torch' >/dev/null 2>&1; then
+if ! "${python}" - <<'PY' >/dev/null 2>&1
+import torch
+import torchvision
+
+assert torch.__version__.startswith("2.11.0")
+assert torchvision.__version__.startswith("0.26.0")
+PY
+then
   "${python}" -m pip install \
     --index-url https://download.pytorch.org/whl/cu128 \
-    torch==2.11.0
+    torch==2.11.0 \
+    torchvision==0.26.0
 fi
 "${python}" -m pip install -r "${source_root}/requirements.txt"
 "${python}" -m pip install --no-deps --upgrade "${repo_root}"
 
 mkdir -p "$(dirname "${model_root}")"
-"${env_prefix}/bin/hf" download \
-  Qwen/Qwen-Image-Bench \
-  --local-dir "${model_root}"
+MODEL_ROOT="${model_root}" "${python}" - <<'PY'
+import os
+
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="Qwen/Qwen-Image-Bench",
+    local_dir=os.environ["MODEL_ROOT"],
+)
+PY
 
 SOURCE_ROOT="${source_root}" MODEL_ROOT="${model_root}" "${python}" - <<'PY'
 import os
@@ -41,6 +56,7 @@ from pathlib import Path
 import torch
 import transformers
 import swift
+import torchvision
 
 source = Path(os.environ["SOURCE_ROOT"])
 model = Path(os.environ["MODEL_ROOT"])
@@ -49,6 +65,7 @@ assert model.joinpath("config.json").is_file()
 print("Qwen-Image-Bench source:", source)
 print("Q-Judger model:", model)
 print("torch:", torch.__version__)
+print("torchvision:", torchvision.__version__)
 print("transformers:", transformers.__version__)
 print("CUDA available:", torch.cuda.is_available())
 PY
