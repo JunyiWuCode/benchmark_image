@@ -177,7 +177,6 @@ class SglangJudge:
             "top_k": 1,
             "top_p": 1.0,
             "repetition_penalty": 1.05,
-            "seed": 42,
         }
 
     def generate_batch(self, items: list[dict[str, Any]]) -> list[str]:
