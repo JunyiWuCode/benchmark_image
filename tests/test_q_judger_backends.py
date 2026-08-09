@@ -6,7 +6,7 @@ import pytest
 from benchmark_image.q_judger_backends import (
     _openai_messages,
     _render_prompt,
-    _vllm_tokenizer_compat_path,
+    _vllm_model_compat_path,
 )
 
 
@@ -59,7 +59,7 @@ def test_render_prompt_enables_thinking_and_uses_one_image():
     assert processor.messages[1]["content"][1] == {"type": "image"}
 
 
-def test_vllm_tokenizer_compat_rewrites_only_tokenizer_class(tmp_path):
+def test_vllm_model_compat_rewrites_metadata_without_copying_weights(tmp_path):
     model = tmp_path / "model"
     model.mkdir()
     (model / "tokenizer_config.json").write_text(
@@ -67,11 +67,28 @@ def test_vllm_tokenizer_compat_rewrites_only_tokenizer_class(tmp_path):
         encoding="utf-8",
     )
     (model / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (model / "weights.safetensors").write_text("weights", encoding="utf-8")
+    (model / "processor_config.json").write_text(
+        json.dumps(
+            {
+                "video_processor": {
+                    "video_processor_type": "Qwen3VLVideoProcessor",
+                    "fps": 2,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    compat = Path(_vllm_tokenizer_compat_path(str(model)))
+    compat = Path(_vllm_model_compat_path(str(model)))
     config = json.loads((compat / "tokenizer_config.json").read_text())
     assert config == {"tokenizer_class": "Qwen2TokenizerFast", "foo": 1}
     assert (compat / "tokenizer.json").is_symlink()
+    assert (compat / "weights.safetensors").is_symlink()
+    assert json.loads((compat / "video_preprocessor_config.json").read_text()) == {
+        "video_processor_type": "Qwen3VLVideoProcessor",
+        "fps": 2,
+    }
     assert json.loads((model / "tokenizer_config.json").read_text()) == {
         "tokenizer_class": "TokenizersBackend",
         "foo": 1,

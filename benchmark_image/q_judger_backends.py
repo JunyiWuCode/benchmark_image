@@ -55,31 +55,36 @@ def _load_qwen_tokenizer(model_path: str):
     return Qwen2TokenizerFast.from_pretrained(model_path)
 
 
-def _vllm_tokenizer_compat_path(model_path: str) -> str:
+def _vllm_model_compat_path(model_path: str) -> str:
     source = Path(model_path).resolve()
     digest = hashlib.sha256(str(source).encode("utf-8")).hexdigest()[:12]
-    target = Path(tempfile.gettempdir()) / f"q_judger_tokenizer_{digest}"
+    target = Path(tempfile.gettempdir()) / f"q_judger_vllm_{digest}"
     target.mkdir(parents=True, exist_ok=True)
+    for source_path in source.iterdir():
+        target_path = target / source_path.name
+        if source_path.is_file() and not target_path.exists():
+            os.symlink(source_path, target_path)
+
     tokenizer_config = json.loads(
         source.joinpath("tokenizer_config.json").read_text(encoding="utf-8")
     )
     tokenizer_config["tokenizer_class"] = "Qwen2TokenizerFast"
-    target.joinpath("tokenizer_config.json").write_text(
+    tokenizer_config_path = target / "tokenizer_config.json"
+    tokenizer_config_path.unlink(missing_ok=True)
+    tokenizer_config_path.write_text(
         json.dumps(tokenizer_config, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    for pattern in (
-        "tokenizer.json",
-        "special_tokens_map.json",
-        "added_tokens.json",
-        "vocab.json",
-        "merges.txt",
-        "chat_template.jinja",
-    ):
-        source_path = source / pattern
-        target_path = target / pattern
-        if source_path.is_file() and not target_path.exists():
-            os.symlink(source_path, target_path)
+
+    processor_config_path = source / "processor_config.json"
+    if processor_config_path.is_file():
+        processor_config = json.loads(processor_config_path.read_text(encoding="utf-8"))
+        video_config = processor_config.get("video_processor")
+        if isinstance(video_config, dict):
+            target.joinpath("video_preprocessor_config.json").write_text(
+                json.dumps(video_config, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
     return str(target)
 
 
@@ -96,11 +101,11 @@ class VllmJudge:
     ) -> None:
         from vllm import LLM, SamplingParams
 
-        tokenizer_path = _vllm_tokenizer_compat_path(model_path)
-        self.processor = _load_qwen_tokenizer(tokenizer_path)
+        compat_path = _vllm_model_compat_path(model_path)
+        self.processor = _load_qwen_tokenizer(compat_path)
         self.engine = LLM(
-            model=model_path,
-            tokenizer=tokenizer_path,
+            model=compat_path,
+            tokenizer=compat_path,
             dtype="bfloat16",
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len,
