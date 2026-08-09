@@ -77,6 +77,25 @@ def score_shard(args) -> None:
         }
         for row in shard_rows
     ]
+    rank_root = Path(args.output_dir) / f"rank_{args.rank:05d}"
+    if not input_rows:
+        _write_jsonl(rank_root / "judged.jsonl", [])
+        _write_jsonl(rank_root / "parsed_scores.jsonl", [])
+        (rank_root / "summary.json").write_text(
+            json.dumps(
+                {
+                    "rank": args.rank,
+                    "world_size": args.world_size,
+                    "num_rows": 0,
+                    "parse_failures": 0,
+                    "image_failures": 0,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return
+
     official = _load_official(Path(args.qwen_image_bench_root))
     inference_args = SimpleNamespace(
         model=args.model,
@@ -92,7 +111,6 @@ def score_shard(args) -> None:
         )
     )
 
-    rank_root = Path(args.output_dir) / f"rank_{args.rank:05d}"
     _write_jsonl(rank_root / "judged.jsonl", results)
     _write_jsonl(
         rank_root / "parsed_scores.jsonl",
