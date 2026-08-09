@@ -40,6 +40,9 @@ def _resolved_config(config: dict | None) -> dict:
         "geneval_model_path": far_rl_root / "third_party" / "reward-server" / "model" / "mask2former2",
         "geneval2_root": far_rl_root / "third_party" / "reference_repos" / "GenEval2",
         "geneval2_benchmark_data": far_rl_root / "third_party" / "reference_repos" / "GenEval2" / "geneval2_data.jsonl",
+        "q_judger_python": conda_env_root / "q_judger" / "bin" / "python",
+        "qwen_image_bench_root": far_rl_root / "third_party" / "reference_repos" / "Qwen-Image-Bench",
+        "q_judger_model": far_rl_root / "third_party" / "reference_models" / "Qwen-Image-Bench",
     }
     for key, value in defaults.items():
         resolved.setdefault(key, str(value))
@@ -367,6 +370,37 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 )
             _barrier()
 
+        elif benchmark == "qwen_image_bench":
+            scoring = root / benchmark / "scoring"
+            scoring.mkdir(parents=True, exist_ok=True)
+            common = [
+                "--results", str(manifest),
+                "--output-dir", str(scoring),
+                "--qwen-image-bench-root", str(config["qwen_image_bench_root"]),
+                "--model", str(config["q_judger_model"]),
+                "--world-size", str(world_size),
+                "--max-batch-size", str(int(config.get("q_judger_max_batch_size", 24))),
+                "--max-new-tokens", str(int(config.get("q_judger_max_new_tokens", 4096))),
+            ]
+            _run_worker(
+                str(config["q_judger_python"]),
+                "score_qwen_image_bench.py",
+                [*common, "--rank", str(rank)],
+                local_rank,
+            )
+            _barrier()
+            if rank == 0:
+                merge_args = [*common, "--merge"]
+                if allow_partial:
+                    merge_args.append("--allow-partial")
+                _run_worker(
+                    str(config["q_judger_python"]),
+                    "score_qwen_image_bench.py",
+                    merge_args,
+                    local_rank,
+                )
+            _barrier()
+
         if rank == 0:
             timing_path = root / benchmark / "timing.json"
             timing = _read_json(timing_path) if timing_path.is_file() else {}
@@ -393,6 +427,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             "cvtg": root / "cvtg" / "scoring" / "summary.json",
             "longtext_en": root / "longtext_en" / "scoring" / "summary.json",
             "geneval2": root / "geneval2" / "scoring" / "summary.json",
+            "qwen_image_bench": root / "qwen_image_bench" / "scoring" / "summary.json",
         }
         for name in names:
             _flatten(name, _read_json(summaries[name]), metrics)
@@ -416,6 +451,12 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             "geneval_overall": "geneval_overall",
             "geneval2_soft_tifa_am": "geneval2_soft_tifa_am",
             "geneval2_soft_tifa_gm": "geneval2_soft_tifa_gm",
+            "qwen_image_bench_overall": "qwen_image_bench_overall",
+            "qwen_image_bench_quality": "qwen_image_bench_quality",
+            "qwen_image_bench_aesthetics": "qwen_image_bench_aesthetics",
+            "qwen_image_bench_alignment": "qwen_image_bench_alignment",
+            "qwen_image_bench_real_world_fidelity": "qwen_image_bench_real_world_fidelity",
+            "qwen_image_bench_creative_generation": "qwen_image_bench_creative_generation",
         }
         for output_name, source_name in canonical.items():
             if source_name in metrics:

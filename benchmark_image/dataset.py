@@ -148,6 +148,43 @@ def _geneval2_records() -> list[dict]:
     return _jsonl_image_records("geneval2", ("geneval2", "geneval2_data.jsonl"), 800, 1)
 
 
+def _qwen_image_bench_records() -> list[dict]:
+    source_rows = _read_jsonl(
+        ASSET_ROOT.joinpath("qwen_image_bench", "prompts_cn.jsonl")
+    )
+    if len(source_rows) != 1000:
+        raise ValueError(
+            f"Qwen-Image-Bench must contain 1000 prompts, got {len(source_rows)}."
+        )
+    records = []
+    for prompt_index, source in enumerate(source_rows):
+        benchmark_id = int(source["ID"])
+        if benchmark_id != prompt_index + 1:
+            raise ValueError(
+                "Qwen-Image-Bench IDs must be contiguous and one-indexed: "
+                f"row={prompt_index}, ID={benchmark_id}."
+            )
+        records.append(
+            {
+                "benchmark": "qwen_image_bench",
+                "prompt_index": prompt_index,
+                "sample_index": 0,
+                "image_id": f"{benchmark_id:06d}",
+                "artifact_id": f"qwen_image_bench:{benchmark_id}:0",
+                "prompt": str(source["prompt_cn"]),
+                "metadata": {
+                    "ID": benchmark_id,
+                    "prompt_cn": str(source["prompt_cn"]),
+                    "prompt_en": str(source["prompt_en"]),
+                    "dims_cn": str(source["dims_cn"]),
+                    "dims_en": str(source["dims_en"]),
+                    "language": "cn",
+                },
+            }
+        )
+    return records
+
+
 LOADERS = {
     "aesthetic_quality": _aesthetic_quality_records,
     "hpsv2_official": _hpsv2_official_records,
@@ -156,6 +193,7 @@ LOADERS = {
     "cvtg": _cvtg_records,
     "longtext_en": _longtext_records,
     "geneval2": _geneval2_records,
+    "qwen_image_bench": _qwen_image_bench_records,
 }
 
 

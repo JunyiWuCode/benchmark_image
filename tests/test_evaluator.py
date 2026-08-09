@@ -37,3 +37,16 @@ def test_worker_preserves_parent_cuda_visibility_mapping(monkeypatch):
     evaluator._run_worker("/env/bin/python", "worker.py", [], 2)
 
     assert captured["env"]["CUDA_VISIBLE_DEVICES"] == "3"
+
+
+def test_q_judger_defaults_are_isolated_from_training_environment(tmp_path):
+    config = evaluator._resolved_config(
+        {"far_rl_root": str(tmp_path / "FAR-RL"), "conda_env_root": str(tmp_path / "envs")}
+    )
+    assert config["q_judger_python"].endswith("envs/q_judger/bin/python")
+    assert config["qwen_image_bench_root"].endswith(
+        "FAR-RL/third_party/reference_repos/Qwen-Image-Bench"
+    )
+    assert config["q_judger_model"].endswith(
+        "FAR-RL/third_party/reference_models/Qwen-Image-Bench"
+    )

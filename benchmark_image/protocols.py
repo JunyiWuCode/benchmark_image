@@ -58,6 +58,12 @@ BENCHMARKS = {
         samples_per_prompt=1,
         primary_metric="geneval2_soft_tifa_gm",
     ),
+    "qwen_image_bench": BenchmarkProtocol(
+        name="qwen_image_bench",
+        prompt_count=1000,
+        samples_per_prompt=1,
+        primary_metric="qwen_image_bench_overall",
+    ),
 }
 
 

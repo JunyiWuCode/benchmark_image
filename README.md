@@ -16,9 +16,21 @@ summaries, and timing records.
 | `ocr` | 1,018 | OCR accuracy |
 | `cvtg` | 2,000 | CVTG word accuracy, NED, and CLIPScore |
 | `longtext_en` | 640 | LongText EN text score |
+| `qwen_image_bench` | 1,000 | Q-Judger Overall and five L1 pillar scores |
 
 The complete suite has 10,894 generated images for each inference-step setting.
-HumanAES is intentionally not included.
+HumanAES is intentionally not included. Qwen-Image-Bench is an independent
+1,000-image protocol and is not part of the original 10,894-image suite.
+
+Qwen-Image-Bench uses the official Chinese prompt protocol and the 27B
+Q-Judger. It retains raw reasoning and structured per-image judgments, and
+reports Overall plus Quality, Aesthetics, Alignment, Real-world Fidelity, and
+Creative Generation. Rubric labels `Fail / Pass / Excel / N/A` map to
+`0 / 60 / 100 / excluded` before official bottom-up aggregation.
+
+The packaged prompt metadata was extracted from
+`Qwen/Qwen-Image-Bench:qwen_image_bench_hf_v0518.jsonl`; its SHA-256 is
+`ab9f6d2109db9f1fdd88ff618cfacf32b64bcd4679160037f37f046c11e6fc41`.
 
 ## Installation
 
@@ -32,6 +44,12 @@ For FAR clusters, environment and weight setup is one command:
 git clone https://github.com/JunyiWuCode/benchmark_image.git
 cd benchmark_image
 bash scripts/setup_far_cluster.sh
+```
+
+Q-Judger has a separate 27B environment and model setup:
+
+```bash
+bash scripts/setup_qwen_image_bench.sh
 ```
 
 See [`docs/INSTALL_FAR_CLUSTER.md`](docs/INSTALL_FAR_CLUSTER.md) for the tested

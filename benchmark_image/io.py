@@ -17,7 +17,14 @@ def output_path_for_record(root: str | Path, record: dict) -> Path:
     if benchmark == "hpsv2_official":
         metadata = json.loads(record["metadata_json"]) if isinstance(record.get("metadata_json"), str) else record["metadata"]
         return root / benchmark / "generation" / "hpsv2_images" / str(metadata["style"]) / f"{int(metadata['style_index']):05d}.jpg"
-    if benchmark in {"ocr", "aesthetic_quality", "cvtg", "longtext_en", "geneval2"}:
+    if benchmark in {
+        "ocr",
+        "aesthetic_quality",
+        "cvtg",
+        "longtext_en",
+        "geneval2",
+        "qwen_image_bench",
+    }:
         return root / benchmark / "generation" / "images" / f"{prompt_index:05d}_{sample_index:04d}.png"
     raise ValueError(f"Unsupported benchmark: {benchmark}")
 

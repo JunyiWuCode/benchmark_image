@@ -36,6 +36,30 @@ For a read-only preflight:
 bash scripts/setup_far_cluster.sh --verify-only
 ```
 
+## Qwen-Image-Bench and Q-Judger
+
+Q-Judger is a separate 27B multimodal model and intentionally uses its own
+environment. Install the official source pinned at revision `8ab1fb47`, the
+model, and scorer dependencies with:
+
+```bash
+cd benchmark_image
+bash scripts/setup_qwen_image_bench.sh
+```
+
+The defaults are:
+
+```text
+environment:  $CONDA_ENV_ROOT/q_judger
+source:       $FAR_RL_ROOT/third_party/reference_repos/Qwen-Image-Bench
+model:        $FAR_RL_ROOT/third_party/reference_models/Qwen-Image-Bench
+```
+
+Override them with `Q_JUDGER_ENV_PREFIX`, `QWEN_IMAGE_BENCH_ROOT`, and
+`Q_JUDGER_MODEL`. Setup downloads roughly the size of a 27B BF16 model, so run
+it on a compute node with adequate storage, never at a training evaluation
+boundary.
+
 ## Required environments
 
 The following names and core package versions are the tested EOS layout:
