@@ -1,6 +1,13 @@
+import json
+from pathlib import Path
+
 import pytest
 
-from benchmark_image.q_judger_backends import _openai_messages, _render_prompt
+from benchmark_image.q_judger_backends import (
+    _openai_messages,
+    _render_prompt,
+    _vllm_tokenizer_compat_path,
+)
 
 
 def test_openai_messages_replace_exactly_one_image_marker():
@@ -50,3 +57,22 @@ def test_render_prompt_enables_thinking_and_uses_one_image():
         "enable_thinking": True,
     }
     assert processor.messages[1]["content"][1] == {"type": "image"}
+
+
+def test_vllm_tokenizer_compat_rewrites_only_tokenizer_class(tmp_path):
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "tokenizer_config.json").write_text(
+        json.dumps({"tokenizer_class": "TokenizersBackend", "foo": 1}),
+        encoding="utf-8",
+    )
+    (model / "tokenizer.json").write_text("{}", encoding="utf-8")
+
+    compat = Path(_vllm_tokenizer_compat_path(str(model)))
+    config = json.loads((compat / "tokenizer_config.json").read_text())
+    assert config == {"tokenizer_class": "Qwen2TokenizerFast", "foo": 1}
+    assert (compat / "tokenizer.json").is_symlink()
+    assert json.loads((model / "tokenizer_config.json").read_text()) == {
+        "tokenizer_class": "TokenizersBackend",
+        "foo": 1,
+    }
