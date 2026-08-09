@@ -58,7 +58,9 @@ model:        $FAR_RL_ROOT/third_party/reference_models/Qwen-Image-Bench
 Override them with `Q_JUDGER_ENV_PREFIX`, `QWEN_IMAGE_BENCH_ROOT`, and
 `Q_JUDGER_MODEL`. Setup downloads roughly the size of a 27B BF16 model, so run
 it on a compute node with adequate storage, never at a training evaluation
-boundary.
+boundary. The tested CUDA environment uses `torch 2.11.0+cu128`; the upstream
+README's commented `torch 2.12.0` example is not currently available from the
+official cu128 wheel index.
 
 ## Required environments
 

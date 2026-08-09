@@ -24,7 +24,7 @@ python="${env_prefix}/bin/python"
 if ! "${python}" -c 'import torch' >/dev/null 2>&1; then
   "${python}" -m pip install \
     --index-url https://download.pytorch.org/whl/cu128 \
-    torch==2.12.0
+    torch==2.11.0
 fi
 "${python}" -m pip install -r "${source_root}/requirements.txt"
 "${python}" -m pip install --no-deps --upgrade "${repo_root}"
