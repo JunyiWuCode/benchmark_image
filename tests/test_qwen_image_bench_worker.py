@@ -58,6 +58,7 @@ def test_completed_rank_outputs_can_be_resumed(tmp_path):
         rank=3,
         world_size=8,
         expected_ids={7, 11},
+        backend="pt",
     )
 
 
@@ -78,4 +79,30 @@ def test_incomplete_rank_outputs_are_recomputed(tmp_path):
         rank=3,
         world_size=8,
         expected_ids={7, 11},
+        backend="pt",
+    )
+
+
+def test_completed_rank_output_is_not_reused_by_another_backend(tmp_path):
+    rank_root = tmp_path / "rank_00000"
+    rank_root.mkdir()
+    for name in ("judged.jsonl", "parsed_scores.jsonl"):
+        (rank_root / name).write_text('{"ID": 7}\n', encoding="utf-8")
+    (rank_root / "summary.json").write_text(
+        json.dumps(
+            {
+                "rank": 0,
+                "world_size": 1,
+                "num_rows": 1,
+                "backend": "vllm",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert not MODULE._rank_output_complete(
+        rank_root,
+        rank=0,
+        world_size=1,
+        expected_ids={7},
+        backend="sglang",
     )

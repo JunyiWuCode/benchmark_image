@@ -54,6 +54,8 @@ def test_q_judger_defaults_are_isolated_from_training_environment(tmp_path):
         {"far_rl_root": str(tmp_path / "FAR-RL"), "conda_env_root": str(tmp_path / "envs")}
     )
     assert config["q_judger_python"].endswith("envs/q_judger/bin/python")
+    assert config["q_judger_vllm_python"].endswith("envs/vllm/bin/python")
+    assert config["q_judger_sglang_python"].endswith("envs/sglang/bin/python")
     assert config["qwen_image_bench_root"].endswith(
         "FAR-RL/third_party/reference_repos/Qwen-Image-Bench"
     )

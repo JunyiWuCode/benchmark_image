@@ -55,6 +55,27 @@ source:       $FAR_RL_ROOT/third_party/reference_repos/Qwen-Image-Bench
 model:        $FAR_RL_ROOT/third_party/reference_models/Qwen-Image-Bench
 ```
 
+The official scorer uses ms-swift PtEngine. Optional accelerated scoring can
+reuse the same model and generated images with these isolated environments:
+
+```text
+vLLM:   vllm 0.19.0, torch 2.10.0, torchvision 0.25.0
+SGLang: sglang 0.5.17, torch 2.9.1+cu128,
+        torchvision 0.24.1+cu128, torchaudio 2.9.1+cu128
+```
+
+Install this package into each engine environment after creating it:
+
+```bash
+$CONDA_ENV_ROOT/vllm/bin/python -m pip install --no-deps --upgrade .
+$CONDA_ENV_ROOT/sglang/bin/python -m pip install --no-deps --upgrade .
+```
+
+Do not upgrade only `torch` inside an engine environment. vLLM and SGLang ship
+compiled CUDA extensions tied to their tested torch stack. Run each backend in
+a separate output directory while hardlinking or symlinking the same validated
+generation directory; otherwise backend outputs cannot be compared exactly.
+
 Override them with `Q_JUDGER_ENV_PREFIX`, `QWEN_IMAGE_BENCH_ROOT`, and
 `Q_JUDGER_MODEL`. Setup downloads roughly the size of a 27B BF16 model, so run
 it on a compute node with adequate storage, never at a training evaluation

@@ -69,6 +69,7 @@ def _rank_output_complete(
     rank: int,
     world_size: int,
     expected_ids: set[int],
+    backend: str,
 ) -> bool:
     judged_path = rank_root / "judged.jsonl"
     parsed_path = rank_root / "parsed_scores.jsonl"
@@ -85,6 +86,7 @@ def _rank_output_complete(
         int(summary.get("rank", -1)) == rank
         and int(summary.get("world_size", -1)) == world_size
         and int(summary.get("num_rows", -1)) == len(expected_ids)
+        and str(summary.get("backend", "pt")) == backend
         and judged_ids == expected_ids
         and parsed_ids == expected_ids
     )
@@ -111,6 +113,7 @@ def score_shard(args) -> None:
         rank=args.rank,
         world_size=args.world_size,
         expected_ids=expected_ids,
+        backend=args.backend,
     ):
         print(
             f"Q-Judger rank {args.rank}/{args.world_size} is already complete; "
@@ -128,6 +131,7 @@ def score_shard(args) -> None:
                     "num_rows": 0,
                     "parse_failures": 0,
                     "image_failures": 0,
+                    "backend": args.backend,
                 },
                 indent=2,
             ),
@@ -142,13 +146,34 @@ def score_shard(args) -> None:
         max_new_tokens=args.max_new_tokens,
         batch_size=args.max_batch_size,
     )
-    results, parse_failures, parsed_scores, image_failures = (
-        official.run_ms_swift_inference(
-            inference_args,
-            pd.DataFrame(input_rows),
-            _metadata_from_rows(shard_rows),
+    if args.backend == "pt":
+        results, parse_failures, parsed_scores, image_failures = (
+            official.run_ms_swift_inference(
+                inference_args,
+                pd.DataFrame(input_rows),
+                _metadata_from_rows(shard_rows),
+            )
         )
-    )
+    else:
+        from benchmark_image.q_judger_backends import build_judge
+
+        judge = build_judge(
+            args.backend,
+            model_path=args.model,
+            max_batch_size=args.max_batch_size,
+            max_new_tokens=args.max_new_tokens,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+        )
+        results, parse_failures, parsed_scores, image_failures = (
+            official._run_batch_inference(
+                judge,
+                inference_args,
+                pd.DataFrame(input_rows),
+                _metadata_from_rows(shard_rows),
+                desc=f"{args.backend} batch inference",
+            )
+        )
 
     _write_jsonl(rank_root / "judged.jsonl", results)
     _write_jsonl(
@@ -166,6 +191,7 @@ def score_shard(args) -> None:
                 "num_rows": len(input_rows),
                 "parse_failures": int(parse_failures),
                 "image_failures": int(image_failures),
+                "backend": args.backend,
             },
             indent=2,
         ),
@@ -201,6 +227,13 @@ def merge_shards(args) -> None:
             parsed_by_id[int(row["ID"])] = row["scores"]
         shard_summaries.append(json.loads(required[2].read_text(encoding="utf-8")))
 
+    shard_backends = {str(row.get("backend", "pt")) for row in shard_summaries}
+    if shard_backends != {args.backend}:
+        raise RuntimeError(
+            "Q-Judger shard backends do not match requested backend: "
+            f"requested={args.backend!r}, found={sorted(shard_backends)!r}."
+        )
+
     expected_ids = {int(row["metadata"]["ID"]) for row in manifest_rows}
     if set(judged_by_id) != expected_ids or set(parsed_by_id) != expected_ids:
         raise RuntimeError(
@@ -225,8 +258,11 @@ def merge_shards(args) -> None:
             "raw_scores": [0, 1, 2, "N/A"],
             "normalized_scores": {"0": 0, "1": 60, "2": 100},
             "q_judger_model": str(args.model),
+            "backend": args.backend,
             "max_batch_size": args.max_batch_size,
             "max_new_tokens": args.max_new_tokens,
+            "max_model_len": args.max_model_len,
+            "gpu_memory_utilization": args.gpu_memory_utilization,
         },
     }
     (output_dir / "scores_detail.json").write_text(
@@ -262,6 +298,9 @@ def main() -> int:
     parser.add_argument("--world-size", type=int, default=1)
     parser.add_argument("--max-batch-size", type=int, default=24)
     parser.add_argument("--max-new-tokens", type=int, default=4096)
+    parser.add_argument("--max-model-len", type=int, default=8192)
+    parser.add_argument("--backend", choices=("pt", "vllm", "sglang"), default="pt")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     parser.add_argument("--merge", action="store_true")
     parser.add_argument("--allow-partial", action="store_true")
     args = parser.parse_args()

@@ -41,6 +41,8 @@ def _resolved_config(config: dict | None) -> dict:
         "geneval2_root": far_rl_root / "third_party" / "reference_repos" / "GenEval2",
         "geneval2_benchmark_data": far_rl_root / "third_party" / "reference_repos" / "GenEval2" / "geneval2_data.jsonl",
         "q_judger_python": conda_env_root / "q_judger" / "bin" / "python",
+        "q_judger_vllm_python": conda_env_root / "vllm" / "bin" / "python",
+        "q_judger_sglang_python": conda_env_root / "sglang" / "bin" / "python",
         "qwen_image_bench_root": far_rl_root / "third_party" / "reference_repos" / "Qwen-Image-Bench",
         "q_judger_model": far_rl_root / "third_party" / "reference_models" / "Qwen-Image-Bench",
     }
@@ -381,6 +383,16 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
         elif benchmark == "qwen_image_bench":
             scoring = root / benchmark / "scoring"
             scoring.mkdir(parents=True, exist_ok=True)
+            q_judger_backend = str(config.get("q_judger_backend", "pt")).lower()
+            if q_judger_backend not in {"pt", "vllm", "sglang"}:
+                raise ValueError(
+                    f"Unsupported q_judger_backend: {q_judger_backend!r}"
+                )
+            backend_python = {
+                "pt": config["q_judger_python"],
+                "vllm": config["q_judger_vllm_python"],
+                "sglang": config["q_judger_sglang_python"],
+            }[q_judger_backend]
             common = [
                 "--results", str(manifest),
                 "--output-dir", str(scoring),
@@ -389,9 +401,13 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 "--world-size", str(world_size),
                 "--max-batch-size", str(int(config.get("q_judger_max_batch_size", 24))),
                 "--max-new-tokens", str(int(config.get("q_judger_max_new_tokens", 4096))),
+                "--max-model-len", str(int(config.get("q_judger_max_model_len", 8192))),
+                "--backend", q_judger_backend,
+                "--gpu-memory-utilization",
+                str(float(config.get("q_judger_gpu_memory_utilization", 0.9))),
             ]
             _run_worker(
-                str(config["q_judger_python"]),
+                str(backend_python),
                 "score_qwen_image_bench.py",
                 [*common, "--rank", str(rank)],
                 local_rank,
@@ -402,7 +418,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 if allow_partial:
                     merge_args.append("--allow-partial")
                 _run_worker(
-                    str(config["q_judger_python"]),
+                    str(backend_python),
                     "score_qwen_image_bench.py",
                     merge_args,
                     local_rank,
@@ -417,6 +433,9 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "benchmark": benchmark,
                     "scoring_seconds": time.time() - started_at,
                     "world_size": world_size,
+                    "q_judger_backend": (
+                        q_judger_backend if benchmark == "qwen_image_bench" else None
+                    ),
                 }
             )
             timing_path.write_text(
