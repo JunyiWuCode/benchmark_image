@@ -63,6 +63,33 @@ def _metadata_from_rows(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(metadata).drop_duplicates(subset=["ID"])
 
 
+def _rank_output_complete(
+    rank_root: Path,
+    *,
+    rank: int,
+    world_size: int,
+    expected_ids: set[int],
+) -> bool:
+    judged_path = rank_root / "judged.jsonl"
+    parsed_path = rank_root / "parsed_scores.jsonl"
+    summary_path = rank_root / "summary.json"
+    if not all(path.is_file() for path in (judged_path, parsed_path, summary_path)):
+        return False
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        judged_ids = {int(row["ID"]) for row in _read_jsonl(judged_path)}
+        parsed_ids = {int(row["ID"]) for row in _read_jsonl(parsed_path)}
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        int(summary.get("rank", -1)) == rank
+        and int(summary.get("world_size", -1)) == world_size
+        and int(summary.get("num_rows", -1)) == len(expected_ids)
+        and judged_ids == expected_ids
+        and parsed_ids == expected_ids
+    )
+
+
 def score_shard(args) -> None:
     all_rows = _read_jsonl(Path(args.results))
     shard_rows = [
@@ -78,6 +105,18 @@ def score_shard(args) -> None:
         for row in shard_rows
     ]
     rank_root = Path(args.output_dir) / f"rank_{args.rank:05d}"
+    expected_ids = {row["ID"] for row in input_rows}
+    if _rank_output_complete(
+        rank_root,
+        rank=args.rank,
+        world_size=args.world_size,
+        expected_ids=expected_ids,
+    ):
+        print(
+            f"Q-Judger rank {args.rank}/{args.world_size} is already complete; "
+            "reusing its validated shard outputs."
+        )
+        return
     if not input_rows:
         _write_jsonl(rank_root / "judged.jsonl", [])
         _write_jsonl(rank_root / "parsed_scores.jsonl", [])

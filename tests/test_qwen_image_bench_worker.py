@@ -37,3 +37,45 @@ def test_metadata_for_judge_preserves_official_ids_and_dims():
     assert frame.to_dict(orient="records") == [
         {"ID": 7, "dims_en": "Quality / Detail / Naturalness"}
     ]
+
+
+def test_completed_rank_outputs_can_be_resumed(tmp_path):
+    rank_root = tmp_path / "rank_00003"
+    rank_root.mkdir()
+    rows = [{"ID": 7}, {"ID": 11}]
+    for name in ("judged.jsonl", "parsed_scores.jsonl"):
+        (rank_root / name).write_text(
+            "".join(json.dumps(row) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+    (rank_root / "summary.json").write_text(
+        json.dumps({"rank": 3, "world_size": 8, "num_rows": 2}),
+        encoding="utf-8",
+    )
+
+    assert MODULE._rank_output_complete(
+        rank_root,
+        rank=3,
+        world_size=8,
+        expected_ids={7, 11},
+    )
+
+
+def test_incomplete_rank_outputs_are_recomputed(tmp_path):
+    rank_root = tmp_path / "rank_00003"
+    rank_root.mkdir()
+    (rank_root / "judged.jsonl").write_text('{"ID": 7}\n', encoding="utf-8")
+    (rank_root / "parsed_scores.jsonl").write_text(
+        '{"ID": 7}\n', encoding="utf-8"
+    )
+    (rank_root / "summary.json").write_text(
+        json.dumps({"rank": 3, "world_size": 8, "num_rows": 2}),
+        encoding="utf-8",
+    )
+
+    assert not MODULE._rank_output_complete(
+        rank_root,
+        rank=3,
+        world_size=8,
+        expected_ids={7, 11},
+    )
