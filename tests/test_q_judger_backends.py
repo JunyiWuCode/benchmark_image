@@ -2,15 +2,48 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import benchmark_image.q_judger_backends as backends
 from benchmark_image.q_judger_backends import (
     _openai_messages,
     _prepend_runtime_bin,
     _render_prompt,
     _vllm_model_compat_path,
 )
+
+
+def test_vllm_judge_forwards_stability_options(monkeypatch):
+    captured = {}
+
+    class LLM:
+        def __init__(self, **kwargs):
+            captured["engine"] = kwargs
+
+    class SamplingParams:
+        def __init__(self, **kwargs):
+            captured["sampling"] = kwargs
+
+    monkeypatch.setitem(
+        sys.modules,
+        "vllm",
+        SimpleNamespace(LLM=LLM, SamplingParams=SamplingParams),
+    )
+    monkeypatch.setattr(backends, "_vllm_model_compat_path", lambda path: path)
+    monkeypatch.setattr(backends, "_load_qwen_tokenizer", lambda path: object())
+
+    backends.VllmJudge(
+        "/model",
+        max_new_tokens=512,
+        enforce_eager=True,
+        mm_encoder_attn_backend="TORCH_SDPA",
+    )
+
+    assert captured["engine"]["enforce_eager"] is True
+    assert captured["engine"]["mm_encoder_attn_backend"] == "TORCH_SDPA"
+    assert captured["sampling"]["max_tokens"] == 512
 
 
 def test_prepend_runtime_bin(monkeypatch):

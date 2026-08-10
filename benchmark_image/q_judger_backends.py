@@ -107,6 +107,8 @@ class VllmJudge:
         max_model_len: int = 8192,
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
+        enforce_eager: bool = False,
+        mm_encoder_attn_backend: str | None = None,
     ) -> None:
         _prepend_runtime_bin()
         from vllm import LLM, SamplingParams
@@ -122,6 +124,8 @@ class VllmJudge:
             max_num_seqs=max_batch_size,
             tensor_parallel_size=tensor_parallel_size,
             limit_mm_per_prompt={"image": 1},
+            enforce_eager=enforce_eager,
+            mm_encoder_attn_backend=mm_encoder_attn_backend,
             seed=42,
         )
         self.sampling_params = SamplingParams(
@@ -197,6 +201,8 @@ def build_judge(
     max_model_len: int,
     tensor_parallel_size: int,
     gpu_memory_utilization: float,
+    vllm_enforce_eager: bool = False,
+    vllm_mm_encoder_attn_backend: str | None = None,
 ):
     normalized = backend.strip().lower()
     if normalized == "vllm":
@@ -205,11 +211,16 @@ def build_judge(
         cls = SglangJudge
     else:
         raise ValueError(f"Unsupported accelerated Q-Judger backend: {backend!r}")
-    return cls(
-        model_path,
+    common_kwargs = dict(
         max_batch_size=max_batch_size,
         max_new_tokens=max_new_tokens,
         max_model_len=max_model_len,
         tensor_parallel_size=tensor_parallel_size,
         gpu_memory_utilization=gpu_memory_utilization,
     )
+    if normalized == "vllm":
+        common_kwargs.update(
+            enforce_eager=vllm_enforce_eager,
+            mm_encoder_attn_backend=vllm_mm_encoder_attn_backend,
+        )
+    return cls(model_path, **common_kwargs)
