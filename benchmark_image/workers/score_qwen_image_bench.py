@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import pickle
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -61,6 +62,46 @@ def _metadata_from_rows(rows: list[dict]) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(metadata).drop_duplicates(subset=["ID"])
+
+
+def _run_remote_inference(args, official, input_rows, shard_rows):
+    import requests
+
+    urls = [url.strip().rstrip("/") for url in args.remote_urls.split(",") if url.strip()]
+    if not urls:
+        raise ValueError("The remote Q-Judger backend requires --remote-urls.")
+    url = urls[args.rank % len(urls)] + "/official"
+    metadata = _metadata_from_rows(shard_rows).set_index("ID")
+    payload = {
+        "images": [Path(row["image_path"]).read_bytes() for row in input_rows],
+        "prompts": [row["prompt"] for row in input_rows],
+        "metadata": [
+            {"dims_en": str(metadata.loc[row["ID"], "dims_en"])}
+            for row in input_rows
+        ],
+    }
+    response = requests.post(
+        url,
+        data=pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL),
+        timeout=args.remote_timeout,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"Remote Q-Judger failed with HTTP {response.status_code}: "
+            f"{response.text[:2000]}"
+        )
+    output = pickle.loads(response.content)
+    if output.get("error"):
+        raise RuntimeError(f"Remote Q-Judger failed: {output['error']}")
+    parsed_scores = list(output["parsed_scores"])
+    raw_outputs = list(output["raw_outputs"])
+    if len(parsed_scores) != len(input_rows) or len(raw_outputs) != len(input_rows):
+        raise ValueError("Remote Q-Judger returned an unexpected number of rows.")
+    results = [
+        official._build_row_result(row, parsed, raw)
+        for row, parsed, raw in zip(input_rows, parsed_scores, raw_outputs)
+    ]
+    return results, int(output.get("parse_failures", 0)), parsed_scores, 0
 
 
 def _rank_output_complete(
@@ -146,7 +187,11 @@ def score_shard(args) -> None:
         max_new_tokens=args.max_new_tokens,
         batch_size=args.max_batch_size,
     )
-    if args.backend == "pt":
+    if args.backend == "remote":
+        results, parse_failures, parsed_scores, image_failures = (
+            _run_remote_inference(args, official, input_rows, shard_rows)
+        )
+    elif args.backend == "pt":
         results, parse_failures, parsed_scores, image_failures = (
             official.run_ms_swift_inference(
                 inference_args,
@@ -302,7 +347,11 @@ def main() -> int:
     parser.add_argument("--max-new-tokens", type=int, default=4096)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
-    parser.add_argument("--backend", choices=("pt", "vllm", "sglang"), default="pt")
+    parser.add_argument(
+        "--backend", choices=("pt", "vllm", "sglang", "remote"), default="pt"
+    )
+    parser.add_argument("--remote-urls", default="")
+    parser.add_argument("--remote-timeout", type=float, default=3600.0)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     parser.add_argument("--merge", action="store_true")
     parser.add_argument("--allow-partial", action="store_true")

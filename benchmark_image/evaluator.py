@@ -390,7 +390,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             scoring = root / benchmark / "scoring"
             scoring.mkdir(parents=True, exist_ok=True)
             q_judger_backend = str(config.get("q_judger_backend", "pt")).lower()
-            if q_judger_backend not in {"pt", "vllm", "sglang"}:
+            if q_judger_backend not in {"pt", "vllm", "sglang", "remote"}:
                 raise ValueError(
                     f"Unsupported q_judger_backend: {q_judger_backend!r}"
                 )
@@ -398,6 +398,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 "pt": config["q_judger_python"],
                 "vllm": config["q_judger_vllm_python"],
                 "sglang": config["q_judger_sglang_python"],
+                "remote": config["q_judger_python"],
             }[q_judger_backend]
             tensor_parallel_size = int(
                 config.get("q_judger_tensor_parallel_size", 1)
@@ -429,6 +430,16 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 "--gpu-memory-utilization",
                 str(float(config.get("q_judger_gpu_memory_utilization", 0.9))),
             ]
+            if q_judger_backend == "remote":
+                common.extend(
+                    [
+                        "--remote-urls",
+                        str(
+                            config.get("q_judger_remote_urls")
+                            or os.environ.get("QJUDGER_REWARD_URL", "")
+                        ),
+                    ]
+                )
             _run_worker(
                 str(backend_python),
                 "score_qwen_image_bench.py",
