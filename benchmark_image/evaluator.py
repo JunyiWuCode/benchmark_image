@@ -85,6 +85,14 @@ def _broadcast(metrics):
     return metrics
 
 
+def _remote_worker_layout(rank: int, world_size: int, remote_urls: str):
+    urls = [url.strip() for url in remote_urls.split(",") if url.strip()]
+    if not urls:
+        raise ValueError("Remote Q-Judger scoring requires at least one URL.")
+    worker_world_size = min(world_size, len(urls))
+    return worker_world_size, rank, rank < worker_world_size
+
+
 def _run_worker(
     python: str,
     worker: str,
@@ -413,8 +421,19 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "Tensor-parallel Q-Judger scoring must use one orchestrator "
                     "process rather than torchrun."
                 )
-            worker_world_size = 1 if tensor_parallel_size > 1 else world_size
-            worker_rank = 0 if tensor_parallel_size > 1 else rank
+            remote_urls = ""
+            run_worker = True
+            if q_judger_backend == "remote":
+                remote_urls = str(
+                    config.get("q_judger_remote_urls")
+                    or os.environ.get("QJUDGER_REWARD_URL", "")
+                )
+                worker_world_size, worker_rank, run_worker = _remote_worker_layout(
+                    rank, world_size, remote_urls
+                )
+            else:
+                worker_world_size = 1 if tensor_parallel_size > 1 else world_size
+                worker_rank = 0 if tensor_parallel_size > 1 else rank
             worker_local_rank = None if tensor_parallel_size > 1 else local_rank
             common = [
                 "--results", str(manifest),
@@ -434,18 +453,16 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 common.extend(
                     [
                         "--remote-urls",
-                        str(
-                            config.get("q_judger_remote_urls")
-                            or os.environ.get("QJUDGER_REWARD_URL", "")
-                        ),
+                        remote_urls,
                     ]
                 )
-            _run_worker(
-                str(backend_python),
-                "score_qwen_image_bench.py",
-                [*common, "--rank", str(worker_rank)],
-                worker_local_rank,
-            )
+            if run_worker:
+                _run_worker(
+                    str(backend_python),
+                    "score_qwen_image_bench.py",
+                    [*common, "--rank", str(worker_rank)],
+                    worker_local_rank,
+                )
             _barrier()
             if rank == 0:
                 merge_args = [*common, "--merge"]
