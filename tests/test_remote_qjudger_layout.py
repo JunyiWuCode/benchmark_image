@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from benchmark_image.evaluator import (
     _post_remote_control,
     _remote_worker_layout,
+    _should_sleep_remote_qjudger,
     _wait_for_sync_markers,
     _write_sync_marker,
 )
@@ -74,3 +75,19 @@ def test_remote_control_posts_to_every_replica(monkeypatch):
         ("http://node0:18094/sleep", "POST", 12),
         ("http://node1:18094/sleep", "POST", 12),
     ]
+
+
+def test_remote_qjudger_stays_resident_by_default():
+    assert not _should_sleep_remote_qjudger(
+        {},
+        ["qwen_image_bench", "aesthetic_quality"],
+        ["http://node0:18094"],
+    )
+
+
+def test_remote_qjudger_sleep_requires_explicit_opt_in():
+    assert _should_sleep_remote_qjudger(
+        {"q_judger_sleep_during_other_benchmarks": True},
+        ["qwen_image_bench", "aesthetic_quality"],
+        ["http://node0:18094"],
+    )

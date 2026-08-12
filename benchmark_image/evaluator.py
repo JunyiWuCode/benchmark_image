@@ -134,6 +134,21 @@ def _post_remote_control(urls: list[str], action: str, timeout_seconds: float) -
         return list(executor.map(post, urls))
 
 
+def _should_sleep_remote_qjudger(
+    config: dict,
+    benchmark_names: list[str],
+    remote_urls: list[str],
+) -> bool:
+    """Return whether shared-GPU scorers explicitly request Q-Judger sleep."""
+
+    return bool(
+        config.get("q_judger_sleep_during_other_benchmarks", False)
+        and remote_urls
+        and "qwen_image_bench" in benchmark_names
+        and any(name != "qwen_image_bench" for name in benchmark_names)
+    )
+
+
 def _distributed_remote_control(
     root: Path,
     *,
@@ -230,11 +245,10 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
         ).split(",")
         if url.strip()
     ]
-    sleep_remote_qjudger = bool(
-        config.get("q_judger_sleep_during_other_benchmarks", True)
-        and remote_qjudger_urls
-        and "qwen_image_bench" in names
-        and any(name != "qwen_image_bench" for name in names)
+    sleep_remote_qjudger = _should_sleep_remote_qjudger(
+        config,
+        names,
+        remote_qjudger_urls,
     )
 
     for benchmark in names:
