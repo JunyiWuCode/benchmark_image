@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -91,6 +92,30 @@ def _remote_worker_layout(rank: int, world_size: int, remote_urls: str):
         raise ValueError("Remote Q-Judger scoring requires at least one URL.")
     worker_world_size = min(world_size, len(urls))
     return worker_world_size, rank, rank < worker_world_size
+
+
+def _write_sync_marker(path: Path, payload: dict) -> None:
+    temporary = path.with_suffix(f"{path.suffix}.tmp-{os.getpid()}")
+    temporary.write_text(json.dumps(payload), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _wait_for_sync_markers(
+    paths: list[Path],
+    *,
+    timeout_seconds: float,
+    poll_seconds: float = 1.0,
+) -> list[dict]:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if all(path.is_file() for path in paths):
+            return [_read_json(path) for path in paths]
+        if time.monotonic() >= deadline:
+            missing = [str(path) for path in paths if not path.is_file()]
+            raise TimeoutError(
+                "Timed out waiting for remote Q-Judger workers: " + ", ".join(missing)
+            )
+        time.sleep(poll_seconds)
 
 
 def _run_worker(
@@ -456,25 +481,84 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                         remote_urls,
                     ]
                 )
-            if run_worker:
-                _run_worker(
-                    str(backend_python),
-                    "score_qwen_image_bench.py",
-                    [*common, "--rank", str(worker_rank)],
-                    worker_local_rank,
+            if q_judger_backend == "remote" and world_size > 1:
+                # A long NCCL barrier keeps a GPU kernel resident and starves the
+                # colocated TP Q-Judger. Use the shared filesystem while remote
+                # inference runs, then return to NCCL only for short synchronization.
+                sync_root = scoring / ".remote_sync"
+                if rank == 0:
+                    shutil.rmtree(sync_root, ignore_errors=True)
+                    sync_root.mkdir(parents=True, exist_ok=True)
+                _barrier()
+
+                worker_markers = [
+                    sync_root / f"worker-{worker_index}.json"
+                    for worker_index in range(worker_world_size)
+                ]
+                if run_worker:
+                    marker_payload = {"rank": worker_rank, "ok": True}
+                    try:
+                        _run_worker(
+                            str(backend_python),
+                            "score_qwen_image_bench.py",
+                            [*common, "--rank", str(worker_rank)],
+                            worker_local_rank,
+                        )
+                    except Exception as exc:
+                        marker_payload.update(ok=False, error=repr(exc))
+                    _write_sync_marker(worker_markers[worker_rank], marker_payload)
+
+                marker_payloads = _wait_for_sync_markers(
+                    worker_markers,
+                    timeout_seconds=float(config.get("q_judger_remote_sync_timeout", 3900)),
                 )
-            _barrier()
-            if rank == 0:
-                merge_args = [*common, "--merge"]
-                if allow_partial:
-                    merge_args.append("--allow-partial")
-                _run_worker(
-                    str(backend_python),
-                    "score_qwen_image_bench.py",
-                    merge_args,
-                    worker_local_rank,
-                )
-            _barrier()
+                failures = [payload for payload in marker_payloads if not payload["ok"]]
+                if failures:
+                    raise RuntimeError(f"Remote Q-Judger workers failed: {failures}")
+
+                merge_marker = sync_root / "merge.json"
+                if rank == 0:
+                    merge_payload = {"ok": True}
+                    try:
+                        merge_args = [*common, "--merge"]
+                        if allow_partial:
+                            merge_args.append("--allow-partial")
+                        _run_worker(
+                            str(backend_python),
+                            "score_qwen_image_bench.py",
+                            merge_args,
+                            worker_local_rank,
+                        )
+                    except Exception as exc:
+                        merge_payload.update(ok=False, error=repr(exc))
+                    _write_sync_marker(merge_marker, merge_payload)
+                merge_payload = _wait_for_sync_markers(
+                    [merge_marker],
+                    timeout_seconds=300,
+                )[0]
+                if not merge_payload["ok"]:
+                    raise RuntimeError(f"Remote Q-Judger merge failed: {merge_payload}")
+                _barrier()
+            else:
+                if run_worker:
+                    _run_worker(
+                        str(backend_python),
+                        "score_qwen_image_bench.py",
+                        [*common, "--rank", str(worker_rank)],
+                        worker_local_rank,
+                    )
+                _barrier()
+                if rank == 0:
+                    merge_args = [*common, "--merge"]
+                    if allow_partial:
+                        merge_args.append("--allow-partial")
+                    _run_worker(
+                        str(backend_python),
+                        "score_qwen_image_bench.py",
+                        merge_args,
+                        worker_local_rank,
+                    )
+                _barrier()
 
         if rank == 0:
             timing_path = root / benchmark / "timing.json"
