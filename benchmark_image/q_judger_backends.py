@@ -109,6 +109,7 @@ class VllmJudge:
         gpu_memory_utilization: float = 0.9,
         enforce_eager: bool = False,
         mm_encoder_attn_backend: str | None = None,
+        enable_sleep_mode: bool = False,
     ) -> None:
         _prepend_runtime_bin()
         from vllm import LLM, SamplingParams
@@ -127,6 +128,7 @@ class VllmJudge:
             enforce_eager=enforce_eager,
             mm_encoder_attn_backend=mm_encoder_attn_backend,
             seed=42,
+            enable_sleep_mode=enable_sleep_mode,
         )
         self.sampling_params = SamplingParams(
             max_tokens=max_new_tokens,
@@ -203,6 +205,7 @@ def build_judge(
     gpu_memory_utilization: float,
     vllm_enforce_eager: bool = False,
     vllm_mm_encoder_attn_backend: str | None = None,
+    vllm_enable_sleep_mode: bool = False,
 ):
     normalized = backend.strip().lower()
     if normalized == "vllm":
@@ -222,5 +225,6 @@ def build_judge(
         common_kwargs.update(
             enforce_eager=vllm_enforce_eager,
             mm_encoder_attn_backend=vllm_mm_encoder_attn_backend,
+            enable_sleep_mode=vllm_enable_sleep_mode,
         )
     return cls(model_path, **common_kwargs)

@@ -6,6 +6,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from benchmark_image.evaluator import (
+    _post_remote_control,
     _remote_worker_layout,
     _wait_for_sync_markers,
     _write_sync_marker,
@@ -43,3 +44,33 @@ def test_remote_qjudger_filesystem_sync_times_out(tmp_path):
             timeout_seconds=0.01,
             poll_seconds=0.001,
         )
+
+
+def test_remote_control_posts_to_every_replica(monkeypatch):
+    seen = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b'{"status": "sleeping"}'
+
+    def urlopen(request, timeout):
+        seen.append((request.full_url, request.method, timeout))
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    results = _post_remote_control(
+        ["http://node0:18094", "http://node1:18094/"],
+        "sleep",
+        12,
+    )
+    assert results == [{"status": "sleeping"}, {"status": "sleeping"}]
+    assert sorted(seen) == [
+        ("http://node0:18094/sleep", "POST", 12),
+        ("http://node1:18094/sleep", "POST", 12),
+    ]

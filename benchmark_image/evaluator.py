@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from importlib.resources import files
 from pathlib import Path
 
@@ -118,6 +120,49 @@ def _wait_for_sync_markers(
         time.sleep(poll_seconds)
 
 
+def _post_remote_control(urls: list[str], action: str, timeout_seconds: float) -> list[dict]:
+    def post(url: str) -> dict:
+        request = urllib.request.Request(
+            f"{url.rstrip('/')}/{action}",
+            data=b"",
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    with ThreadPoolExecutor(max_workers=len(urls)) as executor:
+        return list(executor.map(post, urls))
+
+
+def _distributed_remote_control(
+    root: Path,
+    *,
+    rank: int,
+    urls: list[str],
+    action: str,
+    timeout_seconds: float,
+) -> dict:
+    marker = root / ".remote_control" / f"{action}.json"
+    if rank == 0:
+        marker.unlink(missing_ok=True)
+    _barrier()
+    if rank == 0:
+        payload = {"ok": True, "action": action}
+        try:
+            payload["replicas"] = _post_remote_control(urls, action, timeout_seconds)
+        except Exception as exc:
+            payload.update(ok=False, error=repr(exc))
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        _write_sync_marker(marker, payload)
+    payload = _wait_for_sync_markers(
+        [marker],
+        timeout_seconds=timeout_seconds + 30,
+    )[0]
+    if not payload["ok"]:
+        raise RuntimeError(f"Remote Q-Judger {action} failed: {payload}")
+    return payload
+
+
 def _run_worker(
     python: str,
     worker: str,
@@ -177,6 +222,20 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
     names = normalize_benchmarks(benchmarks)
     rank, world_size, local_rank = _dist_info()
     allow_partial = bool(config.get("allow_partial", False))
+    remote_qjudger_urls = [
+        url.strip()
+        for url in str(
+            config.get("q_judger_remote_urls")
+            or os.environ.get("QJUDGER_REWARD_URL", "")
+        ).split(",")
+        if url.strip()
+    ]
+    sleep_remote_qjudger = bool(
+        config.get("q_judger_sleep_during_other_benchmarks", True)
+        and remote_qjudger_urls
+        and "qwen_image_bench" in names
+        and any(name != "qwen_image_bench" for name in names)
+    )
 
     for benchmark in names:
         started_at = time.time()
@@ -583,6 +642,24 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 encoding="utf-8",
             )
         _barrier()
+
+        if benchmark == "qwen_image_bench" and sleep_remote_qjudger:
+            _distributed_remote_control(
+                root,
+                rank=rank,
+                urls=remote_qjudger_urls,
+                action="sleep",
+                timeout_seconds=float(config.get("q_judger_sleep_timeout", 300)),
+            )
+
+    if sleep_remote_qjudger:
+        _distributed_remote_control(
+            root,
+            rank=rank,
+            urls=remote_qjudger_urls,
+            action="wake",
+            timeout_seconds=float(config.get("q_judger_wake_timeout", 600)),
+        )
 
     metrics = {}
     if rank == 0:
