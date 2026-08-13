@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +21,10 @@ def score(args) -> None:
     source = Path(args.image_root)
     output = Path(args.output_dir)
     shard_root = output / "shards" / f"rank_{args.rank:05d}" / "images"
+    # A resumed evaluation may use a different distributed world size. Reusing
+    # the old links would score a union of the old and current assignments.
+    if shard_root.parent.exists():
+        shutil.rmtree(shard_root.parent)
     shard_root.mkdir(parents=True, exist_ok=True)
     folders = _numeric_folders(source)
     selected = folders[args.rank :: args.world_size]
