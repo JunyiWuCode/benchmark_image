@@ -49,7 +49,7 @@ def test_completed_rank_outputs_can_be_resumed(tmp_path):
             encoding="utf-8",
         )
     (rank_root / "summary.json").write_text(
-        json.dumps({"rank": 3, "world_size": 8, "num_rows": 2}),
+        json.dumps({"rank": 3, "world_size": 8, "num_rows": 2, "input_fingerprint": "abc"}),
         encoding="utf-8",
     )
 
@@ -59,6 +59,7 @@ def test_completed_rank_outputs_can_be_resumed(tmp_path):
         world_size=8,
         expected_ids={7, 11},
         backend="pt",
+        input_fingerprint="abc",
     )
 
 
@@ -80,6 +81,7 @@ def test_incomplete_rank_outputs_are_recomputed(tmp_path):
         world_size=8,
         expected_ids={7, 11},
         backend="pt",
+        input_fingerprint="abc",
     )
 
 
@@ -105,4 +107,48 @@ def test_completed_rank_output_is_not_reused_by_another_backend(tmp_path):
         world_size=1,
         expected_ids={7},
         backend="sglang",
+        input_fingerprint="abc",
     )
+
+
+def test_completed_rank_output_is_not_reused_for_different_images(tmp_path):
+    rank_root = tmp_path / "rank_00000"
+    rank_root.mkdir()
+    for name in ("judged.jsonl", "parsed_scores.jsonl"):
+        (rank_root / name).write_text('{"ID": 7}\n', encoding="utf-8")
+    (rank_root / "summary.json").write_text(
+        json.dumps(
+            {
+                "rank": 0,
+                "world_size": 1,
+                "num_rows": 1,
+                "backend": "remote",
+                "input_fingerprint": "old-images",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert not MODULE._rank_output_complete(
+        rank_root,
+        rank=0,
+        world_size=1,
+        expected_ids={7},
+        backend="remote",
+        input_fingerprint="new-images",
+    )
+
+
+def test_input_fingerprint_tracks_image_contents(tmp_path):
+    image = tmp_path / "image.png"
+    image.write_bytes(b"first")
+    rows = [
+        {
+            "ID": 7,
+            "prompt": "a prompt",
+            "artifact_id": "qwen_image_bench_0007",
+            "image_path": str(image),
+        }
+    ]
+    first = MODULE._input_fingerprint(rows)
+    image.write_bytes(b"second")
+    assert MODULE._input_fingerprint(rows) != first
