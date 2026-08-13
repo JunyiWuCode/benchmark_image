@@ -8,10 +8,14 @@ def test_worker_bounds_threads_and_removes_distributed_environment(monkeypatch):
     monkeypatch.setenv("WORLD_SIZE", "8")
     monkeypatch.setenv("LOCAL_RANK", "3")
     monkeypatch.setenv("LOCAL_WORLD_SIZE", "8")
+    monkeypatch.setenv("MASTER_ADDR", "127.0.0.1")
+    monkeypatch.setenv("MASTER_PORT", "29500")
     monkeypatch.setenv("GROUP_RANK", "0")
     monkeypatch.setenv("GROUP_WORLD_SIZE", "1")
     monkeypatch.setenv("ROLE_RANK", "7")
     monkeypatch.setenv("ROLE_WORLD_SIZE", "8")
+    monkeypatch.setenv("TORCHELASTIC_RUN_ID", "stale-generation-group")
+    monkeypatch.setenv("TORCHELASTIC_USE_AGENT_STORE", "True")
     monkeypatch.setenv("OPENBLAS_NUM_THREADS", "64")
 
     def fake_run(command, *, check, env):
@@ -30,10 +34,14 @@ def test_worker_bounds_threads_and_removes_distributed_environment(monkeypatch):
     assert "WORLD_SIZE" not in captured["env"]
     assert "LOCAL_RANK" not in captured["env"]
     assert "LOCAL_WORLD_SIZE" not in captured["env"]
+    assert "MASTER_ADDR" not in captured["env"]
+    assert "MASTER_PORT" not in captured["env"]
     assert "GROUP_RANK" not in captured["env"]
     assert "GROUP_WORLD_SIZE" not in captured["env"]
     assert "ROLE_RANK" not in captured["env"]
     assert "ROLE_WORLD_SIZE" not in captured["env"]
+    assert "TORCHELASTIC_RUN_ID" not in captured["env"]
+    assert "TORCHELASTIC_USE_AGENT_STORE" not in captured["env"]
 
 
 def test_worker_preserves_parent_cuda_visibility_mapping(monkeypatch):

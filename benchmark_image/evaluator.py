@@ -208,10 +208,17 @@ def _run_worker(
         "WORLD_SIZE",
         "LOCAL_RANK",
         "LOCAL_WORLD_SIZE",
+        "MASTER_ADDR",
+        "MASTER_PORT",
         "GROUP_RANK",
         "GROUP_WORLD_SIZE",
         "ROLE_RANK",
         "ROLE_WORLD_SIZE",
+        "TORCHELASTIC_RESTART_COUNT",
+        "TORCHELASTIC_MAX_RESTARTS",
+        "TORCHELASTIC_RUN_ID",
+        "TORCHELASTIC_USE_AGENT_STORE",
+        "TORCHELASTIC_ERROR_FILE",
     ):
         env.pop(name, None)
     subprocess.run([python, str(WORKER_ROOT.joinpath(worker)), *args], check=True, env=env)
