@@ -148,7 +148,12 @@ def _geneval2_records() -> list[dict]:
     return _jsonl_image_records("geneval2", ("geneval2", "geneval2_data.jsonl"), 800, 1)
 
 
-def _qwen_image_bench_records() -> list[dict]:
+def _qwen_image_bench_records(language: str = "cn") -> list[dict]:
+    if language not in {"cn", "en"}:
+        raise ValueError(
+            "Qwen-Image-Bench language must be 'cn' or 'en', "
+            f"got {language!r}."
+        )
     source_rows = _read_jsonl(
         ASSET_ROOT.joinpath("qwen_image_bench", "prompts_cn.jsonl")
     )
@@ -171,14 +176,14 @@ def _qwen_image_bench_records() -> list[dict]:
                 "sample_index": 0,
                 "image_id": f"{benchmark_id:06d}",
                 "artifact_id": f"qwen_image_bench:{benchmark_id}:0",
-                "prompt": str(source["prompt_cn"]),
+                "prompt": str(source[f"prompt_{language}"]),
                 "metadata": {
                     "ID": benchmark_id,
                     "prompt_cn": str(source["prompt_cn"]),
                     "prompt_en": str(source["prompt_en"]),
                     "dims_cn": str(source["dims_cn"]),
                     "dims_en": str(source["dims_en"]),
-                    "language": "cn",
+                    "language": language,
                 },
             }
         )
@@ -216,11 +221,15 @@ class ImageBenchmarkDataset:
             "longtext_en",
         ),
         smoke_max_prompts_per_benchmark=None,
+        qwen_image_bench_language="cn",
     ):
         self.benchmarks = normalize_benchmarks(benchmarks)
         self.records = []
         for benchmark in self.benchmarks:
-            records = LOADERS[benchmark]()
+            if benchmark == "qwen_image_bench":
+                records = _qwen_image_bench_records(qwen_image_bench_language)
+            else:
+                records = LOADERS[benchmark]()
             if smoke_max_prompts_per_benchmark is not None:
                 limit = int(smoke_max_prompts_per_benchmark)
                 if limit <= 0:

@@ -65,6 +65,19 @@ def _metadata_from_rows(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(metadata).drop_duplicates(subset=["ID"])
 
 
+def _manifest_language(rows: list[dict]) -> str:
+    languages = {
+        str(row.get("metadata", {}).get("language", ""))
+        for row in rows
+    }
+    if len(languages) != 1 or not languages <= {"cn", "en"}:
+        raise RuntimeError(
+            "Qwen-Image-Bench manifest must contain one supported language, "
+            f"found={sorted(languages)!r}."
+        )
+    return languages.pop()
+
+
 def _run_remote_inference(args, official, input_rows, shard_rows):
     import requests
 
@@ -317,10 +330,11 @@ def merge_shards(args) -> None:
     scores = official.compute_bench_scores(
         [parsed_by_id[row_id] for row_id in ordered_ids]
     )
+    language = _manifest_language(manifest_rows)
     details = {
         "official_aggregation": scores,
         "protocol": {
-            "language": "cn",
+            "language": language,
             "raw_scores": [0, 1, 2, "N/A"],
             "normalized_scores": {"0": 0, "1": 60, "2": 100},
             "q_judger_model": str(args.model),

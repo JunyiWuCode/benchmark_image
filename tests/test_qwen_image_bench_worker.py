@@ -39,6 +39,23 @@ def test_metadata_for_judge_preserves_official_ids_and_dims():
     ]
 
 
+def test_manifest_language_is_derived_from_generated_rows():
+    assert MODULE._manifest_language(
+        [{"metadata": {"language": "en"}}, {"metadata": {"language": "en"}}]
+    ) == "en"
+
+
+def test_manifest_rejects_mixed_languages():
+    try:
+        MODULE._manifest_language(
+            [{"metadata": {"language": "cn"}}, {"metadata": {"language": "en"}}]
+        )
+    except RuntimeError as error:
+        assert "one supported language" in str(error)
+    else:
+        raise AssertionError("Expected a mixed-language manifest to fail")
+
+
 def test_completed_rank_outputs_can_be_resumed(tmp_path):
     rank_root = tmp_path / "rank_00003"
     rank_root.mkdir()

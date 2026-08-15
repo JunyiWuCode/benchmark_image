@@ -36,3 +36,27 @@ def test_qwen_image_bench_uses_official_chinese_prompt_protocol():
     assert "机械手表" in first["prompt"]
     assert '"language": "cn"' in first["metadata_json"]
     assert '"dims_en"' in first["metadata_json"]
+
+
+def test_qwen_image_bench_uses_official_english_prompt_protocol():
+    dataset = ImageBenchmarkDataset(
+        ("qwen_image_bench",),
+        qwen_image_bench_language="en",
+    )
+    assert len(dataset) == 1000
+    first = dataset[0]
+    assert first["prompt"].startswith("A disassembled mechanical watch")
+    assert '"language": "en"' in first["metadata_json"]
+    assert '"prompt_cn"' in first["metadata_json"]
+
+
+def test_qwen_image_bench_rejects_unknown_language():
+    try:
+        ImageBenchmarkDataset(
+            ("qwen_image_bench",),
+            qwen_image_bench_language="fr",
+        )
+    except ValueError as error:
+        assert "must be 'cn' or 'en'" in str(error)
+    else:
+        raise AssertionError("Expected unsupported benchmark language to fail")
