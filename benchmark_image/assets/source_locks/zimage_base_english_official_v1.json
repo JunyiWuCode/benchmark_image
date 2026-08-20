@@ -33,6 +33,6 @@
     "qwen_image_bench_en": {"implementation": "Qwen-Image-Bench Q-Judger", "revision": "8ab1fb47df2fba7b0cb046770a87f6323b98ecfc"},
     "bizgeneval": {"implementation": "official Gemini evaluator", "execution_status": "DEFERRED_CLOSED_API"},
     "t2i_corebench": {"implementation": "official open Qwen evaluator", "model": "Qwen/Qwen3.5-9B", "model_revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a"},
-    "hpsv3_official": {"implementation": "MizzenAI HPSv3RewardInferencer", "model": "MizzenAI/HPSv3", "model_revision": "4f81e3e09edd82fe3c5f636444c721b592a735ca"}
+    "hpsv3_official": {"implementation": "MizzenAI HPSv3RewardInferencer", "model": "MizzenAI/HPSv3", "model_revision": "4f81e3e09edd82fe3c5f636444c721b592a735ca", "base_model": "Qwen/Qwen2-VL-7B-Instruct", "base_model_revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac"}
   }
 }
