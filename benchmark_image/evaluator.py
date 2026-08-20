@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -92,6 +93,50 @@ def _run_worker(python: str, worker: str, args: list[str], local_rank: int) -> N
     subprocess.run([python, str(WORKER_ROOT.joinpath(worker)), *args], check=True, env=env)
 
 
+def _scorer_layout(
+    config: dict,
+    *,
+    global_rank: int,
+    global_world_size: int,
+    local_rank: int,
+) -> tuple[bool, int, int, int]:
+    """Map training ranks onto a smaller, explicitly assigned scorer pool."""
+
+    local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", global_world_size))
+    if local_world_size <= 0 or global_world_size % local_world_size:
+        raise ValueError(
+            "scorer layout requires global_world_size divisible by LOCAL_WORLD_SIZE"
+        )
+    node_count = global_world_size // local_world_size
+    node_rank = int(os.environ.get("GROUP_RANK", global_rank // local_world_size))
+    workers_per_node = int(config.get("scorer_processes_per_node", local_world_size))
+    if not 1 <= workers_per_node <= local_world_size:
+        raise ValueError(
+            "scorer_processes_per_node must be within [1, LOCAL_WORLD_SIZE], got "
+            f"{workers_per_node} for LOCAL_WORLD_SIZE={local_world_size}"
+        )
+
+    configured_devices = config.get("scorer_cuda_devices")
+    if configured_devices is None:
+        scorer_devices = list(range(workers_per_node))
+    else:
+        scorer_devices = [int(device) for device in configured_devices]
+        if len(scorer_devices) != workers_per_node:
+            raise ValueError(
+                "scorer_cuda_devices length must equal scorer_processes_per_node"
+            )
+        if len(set(scorer_devices)) != len(scorer_devices) or any(
+            device < 0 for device in scorer_devices
+        ):
+            raise ValueError("scorer_cuda_devices must contain distinct non-negative IDs")
+
+    active = local_rank < workers_per_node
+    scorer_rank = node_rank * workers_per_node + min(local_rank, workers_per_node - 1)
+    scorer_world_size = node_count * workers_per_node
+    scorer_device = scorer_devices[min(local_rank, workers_per_node - 1)]
+    return active, scorer_rank, scorer_world_size, scorer_device
+
+
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -110,10 +155,76 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
     root = Path(root)
     config = _resolved_config(config)
     names = normalize_benchmarks(benchmarks)
-    rank, world_size, local_rank = _dist_info()
+    global_rank, global_world_size, local_rank = _dist_info()
+    scorer_active, rank, world_size, scorer_device = _scorer_layout(
+        config,
+        global_rank=global_rank,
+        global_world_size=global_world_size,
+        local_rank=local_rank,
+    )
     allow_partial = bool(config.get("allow_partial", False))
+    stage_errors: list[str] = []
+
+    def run_worker(python: str, worker: str, args: list[str]) -> None:
+        if scorer_active and not stage_errors:
+            try:
+                _run_worker(python, worker, args, scorer_device)
+            except Exception as exc:
+                stage_errors.append(
+                    f"global_rank={global_rank} scorer_rank={rank} "
+                    f"worker={worker}: {type(exc).__name__}: {exc}"
+                )
+
+    def sync_stage(stage: str) -> None:
+        """Make worker failures collective before any rank can leave a stage."""
+
+        local_error = "; ".join(stage_errors) if stage_errors else None
+        if global_world_size > 1:
+            import torch.distributed as dist
+
+            gathered = [None] * global_world_size
+            dist.all_gather_object(gathered, local_error)
+            failures = [error for error in gathered if error]
+        else:
+            failures = [local_error] if local_error else []
+        stage_errors.clear()
+        if failures:
+            raise RuntimeError(f"benchmark scorer stage {stage!r} failed: " + " | ".join(failures))
+        _barrier()
+
+    summary_paths = {
+        "aesthetic_quality": (
+            root / "aesthetic_quality" / "scoring" / "summary.json",
+            root / "aesthetic_quality" / "scoring" / "hpsv3pp_summary.json",
+        ),
+        "hpsv2_official": (root / "hpsv2_official" / "scoring" / "summary.json",),
+        "geneval": (root / "geneval" / "scoring" / "summary.json",),
+        "ocr": (root / "ocr" / "scoring" / "summary.json",),
+        "cvtg": (root / "cvtg" / "scoring" / "summary.json",),
+        "longtext_en": (root / "longtext_en" / "scoring" / "summary.json",),
+        "geneval2": (root / "geneval2" / "scoring" / "summary.json",),
+    }
+    completed_benchmarks = {
+        benchmark
+        for benchmark in names
+        if all(path.is_file() for path in summary_paths[benchmark])
+    }
+
+    # A previous failed attempt may have shards from a different scorer
+    # topology. Preserve benchmark summaries that were already merged, reset
+    # only incomplete scoring output, and always preserve expensive images.
+    if global_rank == 0:
+        try:
+            for benchmark in names:
+                if benchmark not in completed_benchmarks:
+                    shutil.rmtree(root / benchmark / "scoring", ignore_errors=True)
+        except Exception as exc:
+            stage_errors.append(f"reset scoring directories: {type(exc).__name__}: {exc}")
+    sync_stage("reset-scoring")
 
     for benchmark in names:
+        if benchmark in completed_benchmarks:
+            continue
         started_at = time.time()
         manifest = root / benchmark / "generation" / "results.jsonl"
         if not manifest.is_file():
@@ -128,7 +239,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 "--rank", str(rank),
                 "--world-size", str(world_size),
             ]
-            _run_worker(
+            run_worker(
                 str(config.get("aesthetic_quality_python", sys.executable)),
                 "score_public_metrics.py",
                 [
@@ -139,9 +250,8 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "--hps-open-clip-pretrained-path", str(config.get("hpsv2_open_clip_pretrained_path", "")),
                     "--aesthetic-checkpoint-path", str(config["aesthetic_checkpoint_path"]),
                 ],
-                local_rank,
             )
-            _run_worker(
+            run_worker(
                 str(config["hpsv3pp_python"]),
                 "score_hpsv3pp.py",
                 [
@@ -151,21 +261,20 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "--config-path", str(config["hpsv3pp_config_path"]),
                     "--checkpoint-path", str(config["hpsv3pp_checkpoint_path"]),
                 ],
-                local_rank,
             )
-            _barrier()
-            if rank == 0:
+            sync_stage(f"{benchmark}-shards")
+            if scorer_active and rank == 0:
                 merge_common = ["--merge", "--output-dir", str(scoring), "--world-size", str(world_size)]
                 if allow_partial:
                     merge_common.append("--allow-partial")
-                _run_worker(str(config.get("aesthetic_quality_python", sys.executable)), "score_public_metrics.py", merge_common, local_rank)
-                _run_worker(str(config["hpsv3pp_python"]), "score_hpsv3pp.py", merge_common, local_rank)
-            _barrier()
+                run_worker(str(config.get("aesthetic_quality_python", sys.executable)), "score_public_metrics.py", merge_common)
+                run_worker(str(config["hpsv3pp_python"]), "score_hpsv3pp.py", merge_common)
+            sync_stage(f"{benchmark}-merge")
 
         elif benchmark == "hpsv2_official":
             scoring = root / benchmark / "scoring"
             scoring.mkdir(parents=True, exist_ok=True)
-            _run_worker(
+            run_worker(
                 str(config.get("hpsv2_python", sys.executable)),
                 "score_hpsv2.py",
                 [
@@ -178,18 +287,17 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "--open-clip-pretrained", str(config.get("hpsv2_open_clip_pretrained", "laion2B-s32B-b79K")),
                     "--open-clip-pretrained-path", str(config.get("hpsv2_open_clip_pretrained_path", "")),
                 ],
-                local_rank,
             )
-            _barrier()
-            if rank == 0:
+            sync_stage(f"{benchmark}-shards")
+            if scorer_active and rank == 0:
                 args = [
                     "--output-dir", str(scoring),
                     "--world-size", str(world_size),
                 ]
                 if allow_partial:
                     args.append("--allow-partial")
-                _run_worker(str(config.get("hpsv2_python", sys.executable)), "score_hpsv2.py", ["--merge", *args], local_rank)
-            _barrier()
+                run_worker(str(config.get("hpsv2_python", sys.executable)), "score_hpsv2.py", ["--merge", *args])
+            sync_stage(f"{benchmark}-merge")
 
         elif benchmark == "ocr":
             scoring = root / benchmark / "scoring"
@@ -203,19 +311,19 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             ]
             if bool(config.get("ocr_require_paddleocr_3_3_3", True)):
                 args.append("--require-paddleocr-3-3-3")
-            _run_worker(str(config["ocr_python"]), "score_ocr.py", args, local_rank)
-            _barrier()
-            if rank == 0:
+            run_worker(str(config["ocr_python"]), "score_ocr.py", args)
+            sync_stage(f"{benchmark}-shards")
+            if scorer_active and rank == 0:
                 merge_args = ["--merge", "--output-dir", str(scoring), "--world-size", str(world_size)]
                 if allow_partial:
                     merge_args.append("--allow-partial")
-                _run_worker(str(config["ocr_python"]), "score_ocr.py", merge_args, local_rank)
-            _barrier()
+                run_worker(str(config["ocr_python"]), "score_ocr.py", merge_args)
+            sync_stage(f"{benchmark}-merge")
 
         elif benchmark == "geneval":
             scoring = root / benchmark / "scoring"
             scoring.mkdir(parents=True, exist_ok=True)
-            _run_worker(
+            run_worker(
                 str(config["geneval_python"]),
                 "score_geneval.py",
                 [
@@ -227,10 +335,9 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "--rank", str(rank),
                     "--world-size", str(world_size),
                 ],
-                local_rank,
             )
-            _barrier()
-            if rank == 0:
+            sync_stage(f"{benchmark}-shards")
+            if scorer_active and rank == 0:
                 merge_args = [
                     "--merge",
                     "--output-dir", str(scoring),
@@ -238,18 +345,17 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 ]
                 if allow_partial:
                     merge_args.append("--allow-partial")
-                _run_worker(
+                run_worker(
                     str(config["geneval_python"]),
                     "score_geneval.py",
                     merge_args,
-                    local_rank,
                 )
-            _barrier()
+            sync_stage(f"{benchmark}-merge")
 
         elif benchmark == "cvtg":
             scoring = root / benchmark / "scoring"
             scoring.mkdir(parents=True, exist_ok=True)
-            _run_worker(
+            run_worker(
                 str(config["ocr_python"]),
                 "score_cvtg.py",
                 [
@@ -257,9 +363,8 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "--num_shards", str(world_size), "--shard_id", str(rank),
                     "--ocr_batch", str(int(config.get("cvtg_ocr_batch_size", 32))),
                 ],
-                local_rank,
             )
-            _run_worker(
+            run_worker(
                 str(config.get("cvtg_clip_python", sys.executable)),
                 "score_cvtg.py",
                 [
@@ -267,17 +372,15 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "--num_shards", str(world_size), "--shard_id", str(rank),
                     "--clip_batch", str(int(config.get("cvtg_clip_batch_size", 32))),
                 ],
-                local_rank,
             )
-            _barrier()
-            if rank == 0:
-                _run_worker(
+            sync_stage(f"{benchmark}-shards")
+            if scorer_active and rank == 0:
+                run_worker(
                     str(config.get("cvtg_clip_python", sys.executable)),
                     "score_cvtg.py",
                     ["--stage", "merge", "--results", str(manifest), "--output_dir", str(scoring)],
-                    local_rank,
                 )
-            _barrier()
+            sync_stage(f"{benchmark}-merge")
 
         elif benchmark == "longtext_en":
             scoring = root / benchmark / "scoring"
@@ -288,17 +391,17 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 "--batch_size", str(int(config.get("longtext_batch_size", 4))),
                 "--max_new_tokens", str(int(config.get("longtext_max_new_tokens", 256))),
             ]
-            _run_worker(str(config["longtext_python"]), "score_longtext.py", common, local_rank)
-            _barrier()
-            if rank == 0:
+            run_worker(str(config["longtext_python"]), "score_longtext.py", common)
+            sync_stage(f"{benchmark}-shards")
+            if scorer_active and rank == 0:
                 merge_args = [
                     "--merge", "--results", str(manifest), "--output_dir", str(scoring),
                     "--world_size", str(world_size), "--mode", "en",
                 ]
                 if allow_partial:
                     merge_args.append("--allow_partial")
-                _run_worker(str(config["longtext_python"]), "score_longtext.py", merge_args, local_rank)
-            _barrier()
+                run_worker(str(config["longtext_python"]), "score_longtext.py", merge_args)
+            sync_stage(f"{benchmark}-merge")
 
         elif benchmark == "geneval2":
             generation = root / benchmark / "generation"
@@ -313,7 +416,7 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
             if allow_partial:
                 benchmark_data = generation / "benchmark_data_partial.jsonl"
                 ordered_rows = sorted(rows, key=lambda row: int(row["prompt_index"]))
-                if rank == 0:
+                if global_rank == 0:
                     benchmark_data.write_text(
                         "".join(
                             json.dumps(row["metadata"], ensure_ascii=False) + "\n"
@@ -321,8 +424,8 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                         ),
                         encoding="utf-8",
                     )
-                _barrier()
-            _run_worker(
+                sync_stage(f"{benchmark}-partial-manifest")
+            run_worker(
                 str(config["geneval2_python"]),
                 "score_geneval2.py",
                 [
@@ -333,10 +436,9 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                     "--rank", str(rank),
                     "--world-size", str(world_size),
                 ],
-                local_rank,
             )
-            _barrier()
-            if rank == 0:
+            sync_stage(f"{benchmark}-shards")
+            if scorer_active and rank == 0:
                 merge_args = [
                     "--merge",
                     "--results", str(manifest),
@@ -346,65 +448,60 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
                 ]
                 if allow_partial:
                     merge_args.append("--allow-partial")
-                _run_worker(
+                run_worker(
                     str(config["geneval2_python"]),
                     "score_geneval2.py",
                     merge_args,
-                    local_rank,
                 )
-            _barrier()
+            sync_stage(f"{benchmark}-merge")
 
-        if rank == 0:
-            timing_path = root / benchmark / "timing.json"
-            timing = _read_json(timing_path) if timing_path.is_file() else {}
-            timing.update(
-                {
-                    "benchmark": benchmark,
-                    "scoring_seconds": time.time() - started_at,
-                    "world_size": world_size,
-                }
-            )
-            timing_path.write_text(
-                json.dumps(timing, indent=2),
-                encoding="utf-8",
-            )
-        _barrier()
+        if global_rank == 0:
+            try:
+                timing_path = root / benchmark / "timing.json"
+                timing = _read_json(timing_path) if timing_path.is_file() else {}
+                timing.update(
+                    {
+                        "benchmark": benchmark,
+                        "scoring_seconds": time.time() - started_at,
+                        "world_size": world_size,
+                    }
+                )
+                timing_path.write_text(
+                    json.dumps(timing, indent=2),
+                    encoding="utf-8",
+                )
+            except Exception as exc:
+                stage_errors.append(
+                    f"write {benchmark} timing: {type(exc).__name__}: {exc}"
+                )
+        sync_stage(f"{benchmark}-timing")
 
     metrics = {}
-    if rank == 0:
-        summaries = {
-            "aesthetic_quality": root / "aesthetic_quality" / "scoring" / "summary.json",
-            "hpsv2_official": root / "hpsv2_official" / "scoring" / "summary.json",
-            "geneval": root / "geneval" / "scoring" / "summary.json",
-            "ocr": root / "ocr" / "scoring" / "summary.json",
-            "cvtg": root / "cvtg" / "scoring" / "summary.json",
-            "longtext_en": root / "longtext_en" / "scoring" / "summary.json",
-            "geneval2": root / "geneval2" / "scoring" / "summary.json",
-        }
-        for name in names:
-            _flatten(name, _read_json(summaries[name]), metrics)
-            if name == "aesthetic_quality":
-                _flatten(
-                    name,
-                    _read_json(root / "aesthetic_quality" / "scoring" / "hpsv3pp_summary.json"),
-                    metrics,
-                )
-        canonical = {
-            "ocr": "ocr_metrics_flowopd_ocr_acc",
-            "cvtg_word_accuracy": "cvtg_word_accuracy",
-            "cvtg_ned": "cvtg_ned",
-            "cvtg_clipscore": "cvtg_clip_score",
-            "longtext_en_text_score": "longtext_en_text_score",
-            "hpsv2": "aesthetic_quality_hpsv2",
-            "hpsv3pp_iter0": "aesthetic_quality_hpsv3pp_iter0",
-            "aesthetic": "aesthetic_quality_aesthetic",
-            "clipscore": "aesthetic_quality_clipscore",
-            "hpsv2_1_official_average": "hpsv2_official_average",
-            "geneval_overall": "geneval_overall",
-            "geneval2_soft_tifa_am": "geneval2_soft_tifa_am",
-            "geneval2_soft_tifa_gm": "geneval2_soft_tifa_gm",
-        }
-        for output_name, source_name in canonical.items():
-            if source_name in metrics:
-                metrics[output_name] = metrics[source_name]
+    if global_rank == 0:
+        try:
+            for name in names:
+                _flatten(name, _read_json(summary_paths[name][0]), metrics)
+                if name == "aesthetic_quality":
+                    _flatten(name, _read_json(summary_paths[name][1]), metrics)
+            canonical = {
+                "ocr": "ocr_metrics_flowopd_ocr_acc",
+                "cvtg_word_accuracy": "cvtg_word_accuracy",
+                "cvtg_ned": "cvtg_ned",
+                "cvtg_clipscore": "cvtg_clip_score",
+                "longtext_en_text_score": "longtext_en_text_score",
+                "hpsv2": "aesthetic_quality_hpsv2",
+                "hpsv3pp_iter0": "aesthetic_quality_hpsv3pp_iter0",
+                "aesthetic": "aesthetic_quality_aesthetic",
+                "clipscore": "aesthetic_quality_clipscore",
+                "hpsv2_1_official_average": "hpsv2_official_average",
+                "geneval_overall": "geneval_overall",
+                "geneval2_soft_tifa_am": "geneval2_soft_tifa_am",
+                "geneval2_soft_tifa_gm": "geneval2_soft_tifa_gm",
+            }
+            for output_name, source_name in canonical.items():
+                if source_name in metrics:
+                    metrics[output_name] = metrics[source_name]
+        except Exception as exc:
+            stage_errors.append(f"load summaries: {type(exc).__name__}: {exc}")
+    sync_stage("load-summaries")
     return _broadcast(metrics)
