@@ -45,7 +45,7 @@ def score(args) -> None:
     subprocess.run(
         [
             sys.executable,
-            str(Path(args.geneval2_root) / "evaluation.py"),
+            str(Path(args.evaluator_script) if args.evaluator_script else Path(args.geneval2_root) / "evaluation.py"),
             "--benchmark_data",
             str(benchmark_path),
             "--image_filepath_data",
@@ -104,6 +104,7 @@ def main() -> int:
     parser.add_argument("--results", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--geneval2-root")
+    parser.add_argument("--evaluator-script")
     parser.add_argument("--benchmark-data", required=True)
     parser.add_argument("--rank", type=int, default=0)
     parser.add_argument("--world-size", type=int, required=True)
