@@ -14,6 +14,7 @@ from benchmark_image.official_suite import (
     expected_image_count,
     hps_aspect_1024,
     output_path_for_record,
+    select_coverage_smoke,
 )
 
 
@@ -82,6 +83,35 @@ def test_official_qwen_english_records_carry_language_contract():
     records = build_records({}, ["qwen_image_bench_en"])
     assert len(records) == 1000
     assert {row["metadata"]["language"] for row in records} == {"en"}
+
+
+def test_oneig_coverage_smoke_includes_style_scorable_anime(tmp_path: Path):
+    root = tmp_path / "oneig"
+    (root / "scripts/style").mkdir(parents=True)
+    categories = (
+        [("Anime_Stylization", 245), ("Portrait", 244), ("General_Object", 206),
+         ("Text_Rendering", 200), ("Knowledge_Reasoning", 225)]
+    )
+    rows = []
+    for category, count in categories:
+        rows.extend(
+            {"category": category, "id": f"{index:03d}", "prompt_en": f"{category} {index}"}
+            for index in range(count)
+        )
+    import csv
+    with (root / "OneIG-Bench.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("category", "id", "prompt_en"))
+        writer.writeheader()
+        writer.writerows(rows)
+    with (root / "scripts/style/style.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("id", "class"))
+        writer.writeheader()
+        writer.writerows({"id": f"{index:03d}", "class": "fauvism" if index == 49 else ""} for index in range(245))
+    records = build_records({"oneig_en": root}, ["oneig_en"])
+    smoke = select_coverage_smoke(records)
+    anime = [row for row in smoke if row["metadata"]["category"] == "Anime_Stylization"]
+    assert {row["metadata"]["id"] for row in anime} == {"049"}
+    assert {row["sample_index"] for row in anime} == {0, 1, 2, 3}
 
 
 def test_official_grid_layouts_are_lossless_and_auditable(tmp_path: Path):

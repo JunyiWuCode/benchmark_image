@@ -280,7 +280,17 @@ def _load_records(name: str, sources: Mapping[str, Path], samples: int) -> list[
     if name == "oneig_en":
         with (sources[name] / "OneIG-Bench.csv").open(encoding="utf-8", newline="") as handle:
             data = list(csv.DictReader(handle))
-        rows = [(str(row["prompt_en"]), row, 1024, 1024) for row in data]
+        style_path = sources[name] / "scripts/style/style.csv"
+        with style_path.open(encoding="utf-8", newline="") as handle:
+            style_classes = {
+                str(row["id"]): str(row["class"]).strip()
+                for row in csv.DictReader(handle)
+            }
+        rows = []
+        for row in data:
+            metadata = dict(row)
+            metadata["style_class"] = style_classes.get(str(row["id"]), "")
+            rows.append((str(row["prompt_en"]), metadata, 1024, 1024))
         return _expand(rows, name, samples)
     if name == "qwen_image_bench_en":
         path = Path(str(ASSET_ROOT.joinpath("qwen_image_bench", "prompts_cn.jsonl")))
@@ -437,7 +447,11 @@ def select_coverage_smoke(records: Iterable[Mapping]) -> list[dict]:
         minimum=8,
     )
     selected["oneig_en"] = _greedy_cover(
-        first_samples["oneig_en"], lambda row: {str(row["metadata"]["category"])}
+        first_samples["oneig_en"],
+        lambda row: {
+            str(row["metadata"]["category"]),
+            *({"scorer:style"} if row["metadata"].get("style_class") else set()),
+        },
     )
     selected["qwen_image_bench_en"] = _greedy_cover(
         first_samples["qwen_image_bench_en"],
@@ -468,7 +482,7 @@ def select_coverage_smoke(records: Iterable[Mapping]) -> list[dict]:
     for index, row in enumerate(smoke):
         row["index"] = index
         row["reportable"] = False
-        row["smoke_selection"] = "coverage_v1"
+        row["smoke_selection"] = "coverage_v2"
     return smoke
 
 
