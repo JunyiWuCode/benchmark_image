@@ -204,10 +204,15 @@ def evaluate_generated_suite(root: str | Path, benchmarks, config: dict | None =
         "longtext_en": (root / "longtext_en" / "scoring" / "summary.json",),
         "geneval2": (root / "geneval2" / "scoring" / "summary.json",),
     }
+    def summaries_are_complete(benchmark: str) -> bool:
+        try:
+            summaries = [_read_json(path) for path in summary_paths[benchmark]]
+        except (OSError, ValueError, TypeError):
+            return False
+        return all(isinstance(summary, dict) and bool(summary) for summary in summaries)
+
     completed_benchmarks = {
-        benchmark
-        for benchmark in names
-        if all(path.is_file() for path in summary_paths[benchmark])
+        benchmark for benchmark in names if summaries_are_complete(benchmark)
     }
 
     # A previous failed attempt may have shards from a different scorer
