@@ -18,6 +18,7 @@ dependencies = [
 [project.scripts]
 benchmark-image = "benchmark_image.cli:main"
 benchmark-image-score = "benchmark_image.score_existing:main"
+benchmark-image-official = "benchmark_image.official_cli:main"
 
 [tool.setuptools]
 include-package-data = true
