@@ -45,6 +45,12 @@ def test_manifest_language_is_derived_from_generated_rows():
     ) == "en"
 
 
+def test_manifest_language_recovers_from_versioned_benchmark_name():
+    assert MODULE._manifest_language(
+        [{"benchmark": "qwen_image_bench_en", "metadata": {}}]
+    ) == "en"
+
+
 def test_manifest_rejects_mixed_languages():
     try:
         MODULE._manifest_language(

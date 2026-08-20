@@ -284,7 +284,11 @@ def _load_records(name: str, sources: Mapping[str, Path], samples: int) -> list[
         return _expand(rows, name, samples)
     if name == "qwen_image_bench_en":
         path = Path(str(ASSET_ROOT.joinpath("qwen_image_bench", "prompts_cn.jsonl")))
-        rows = [(str(row["prompt_en"]), row, 1024, 1024) for row in _jsonl(path)]
+        rows = []
+        for row in _jsonl(path):
+            metadata = dict(row)
+            metadata["language"] = "en"
+            rows.append((str(row["prompt_en"]), metadata, 1024, 1024))
         return _expand(rows, name, samples)
     if name == "bizgeneval":
         data = _jsonl(sources[name] / "assets/bizgeneval.jsonl")

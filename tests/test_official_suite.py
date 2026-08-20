@@ -78,6 +78,12 @@ def test_training_monitor_reduces_to_one_image_per_prompt(tmp_path: Path):
     assert all(not row["reportable"] for row in records)
 
 
+def test_official_qwen_english_records_carry_language_contract():
+    records = build_records({}, ["qwen_image_bench_en"])
+    assert len(records) == 1000
+    assert {row["metadata"]["language"] for row in records} == {"en"}
+
+
 def test_official_grid_layouts_are_lossless_and_auditable(tmp_path: Path):
     image_root = tmp_path / "raw"
     records = []

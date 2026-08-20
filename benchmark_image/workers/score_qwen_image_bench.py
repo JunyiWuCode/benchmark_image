@@ -68,6 +68,11 @@ def _metadata_from_rows(rows: list[dict]) -> pd.DataFrame:
 def _manifest_language(rows: list[dict]) -> str:
     languages = {
         str(row.get("metadata", {}).get("language", ""))
+        or (
+            "en" if str(row.get("benchmark", "")).endswith("_en")
+            else "cn" if str(row.get("benchmark", "")).endswith("_cn")
+            else ""
+        )
         for row in rows
     }
     if len(languages) != 1 or not languages <= {"cn", "en"}:
