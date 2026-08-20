@@ -16,6 +16,25 @@ def read_rows(path: Path) -> list[dict]:
     ]
 
 
+def select_benchmark_rows(result_rows: list[dict], benchmark_path: Path) -> list[dict]:
+    """Resolve smoke/full rows by official source index and reject source drift."""
+    official_rows = read_rows(benchmark_path)
+    selected = []
+    seen_indices = set()
+    for row in result_rows:
+        index = int(row["prompt_index"])
+        if index in seen_indices:
+            raise RuntimeError(f"Duplicate GenEval2 prompt_index: {index}")
+        if index < 0 or index >= len(official_rows):
+            raise RuntimeError(f"GenEval2 prompt_index out of range: {index}")
+        seen_indices.add(index)
+        official = official_rows[index]
+        if row["metadata"] != official:
+            raise RuntimeError(f"GenEval2 source metadata drift at prompt_index {index}")
+        selected.append(official)
+    return selected
+
+
 def score(args) -> None:
     rows = sorted(read_rows(Path(args.results)), key=lambda row: int(row["prompt_index"]))
     selected = rows[args.rank :: args.world_size]
@@ -61,6 +80,7 @@ def score(args) -> None:
 
 def merge(args) -> None:
     rows = sorted(read_rows(Path(args.results)), key=lambda row: int(row["prompt_index"]))
+    benchmark_rows = select_benchmark_rows(rows, Path(args.benchmark_data))
     merged = [None] * len(rows)
     output = Path(args.output_dir)
     for rank in range(args.world_size):
@@ -83,11 +103,16 @@ def merge(args) -> None:
 
     score_path = output / "score_lists.json"
     score_path.write_text(json.dumps(merged), encoding="utf-8")
+    selected_benchmark_path = output / "benchmark_selected.jsonl"
+    selected_benchmark_path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in benchmark_rows),
+        encoding="utf-8",
+    )
     summary_command = [
         sys.executable,
         str(Path(__file__).with_name("summarize_geneval2.py")),
         "--benchmark_data",
-        args.benchmark_data,
+        str(selected_benchmark_path),
         "--score_data",
         str(score_path),
         "--output_json",
