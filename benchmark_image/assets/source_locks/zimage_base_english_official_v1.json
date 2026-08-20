@@ -29,7 +29,7 @@
     "tiif": {"implementation": "TIIF-Bench eval_with_vlm", "model": "Qwen/Qwen2.5-VL-72B-Instruct", "model_revision": "89c86200743eec961a297729e7990e8f2ddbc4c5"},
     "cvtg": {"implementation": "benchmark_image official CVTG PaddleOCR/NED/CLIP adapter"},
     "longtext_en": {"implementation": "X-Omni LongText word-level Text Score", "model": "Qwen/Qwen2.5-VL-7B-Instruct", "model_revision": "cc594898137f460bfe9f0759e9844b3ce807cfb5"},
-    "oneig_en": {"implementation": "OneIG official five-component scripts", "model": "Qwen/Qwen2.5-VL-7B-Instruct", "model_revision": "cc594898137f460bfe9f0759e9844b3ce807cfb5"},
+    "oneig_en": {"implementation": "OneIG official five-component scripts", "model": "Qwen/Qwen2.5-VL-7B-Instruct", "model_revision": "cc594898137f460bfe9f0759e9844b3ce807cfb5", "llm2clip_model": "microsoft/LLM2CLIP-Openai-L-14-336", "llm2clip_model_revision": "92512331f393a003c3d98404677f991c188162c9", "llm2clip_text_model": "microsoft/LLM2CLIP-Llama-3-8B-Instruct-CC-Finetuned", "llm2clip_text_model_revision": "97f7d164a1eb89a79e344b21c7a1be7eee265d2e", "clip_processor_model": "openai/clip-vit-large-patch14-336", "clip_processor_revision": "ce19dc912ca5cd21c8a653c79e251e808ccabcd1", "style_encoder_model": "xingpng/OneIG-StyleEncoder", "style_encoder_revision": "9e8104621cbc8c8f04ce663639ffbec63e0a9693"},
     "qwen_image_bench_en": {"implementation": "Qwen-Image-Bench Q-Judger", "revision": "8ab1fb47df2fba7b0cb046770a87f6323b98ecfc"},
     "bizgeneval": {"implementation": "official Gemini evaluator", "execution_status": "DEFERRED_CLOSED_API"},
     "t2i_corebench": {"implementation": "official open Qwen evaluator", "model": "Qwen/Qwen3.5-9B", "model_revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a"},
