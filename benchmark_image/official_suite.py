@@ -236,6 +236,7 @@ def _record(
         "prompt": str(prompt),
         "height": int(height),
         "width": int(width),
+        "resolution_policy": OFFICIAL_PROTOCOLS[benchmark].resolution_policy,
         "metadata": metadata,
     }
 
