@@ -186,7 +186,10 @@ def materialize_official_layouts(
 
 
 def collect_generation_manifests(
-    records: Iterable[Mapping], image_root: str | Path
+    records: Iterable[Mapping],
+    image_root: str | Path,
+    *,
+    verify_images: bool = True,
 ) -> dict:
     rows = [dict(row) for row in records]
     image_root = Path(image_root)
@@ -233,9 +236,29 @@ def collect_generation_manifests(
                 raise RuntimeError(
                     f"Manifest field mismatch for {artifact_id} {key}: {generated[key]} != {source[key]}"
                 )
-    audit = audit_raw_images(rows, image_root)
-    if not audit["complete"]:
-        raise RuntimeError(f"Generated image audit failed: {audit['failure_count']} failures")
+    if verify_images:
+        image_check = audit_raw_images(rows, image_root)
+        if not image_check["complete"]:
+            raise RuntimeError(f"Generated image audit failed: {image_check['failure_count']} failures")
+    else:
+        missing_files = [
+            str(output_path_for_record(image_root, row))
+            for row in rows
+            if not output_path_for_record(image_root, row).is_file()
+        ]
+        if missing_files:
+            raise RuntimeError(
+                f"Generated image existence check failed: {len(missing_files)} missing, "
+                f"first_missing={missing_files[:1]}"
+            )
+        image_check = {
+            "expected_images": len(rows),
+            "existing_images": len(rows),
+            "failure_count": 0,
+            "failures": [],
+            "complete": True,
+            "mode": "existence_only",
+        }
     merged_path = image_root / "generation_manifest.jsonl"
     with merged_path.open("w", encoding="utf-8") as handle:
         for source in rows:
@@ -246,7 +269,7 @@ def collect_generation_manifests(
         "shard_count": shard_count,
         "manifest": str(merged_path.resolve()),
         "protocol": baseline,
-        "image_audit": audit,
+        "image_check": image_check,
     }
     (image_root / "generation_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
