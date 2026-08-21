@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -105,6 +106,7 @@ def materialize_official_layouts(
     layout_root: str | Path,
     *,
     model_name: str = "Z-Image-Base-cfg4-nfe50",
+    grid_workers: int = 1,
 ) -> dict:
     rows = list(records)
     image_root, layout_root = Path(image_root), Path(layout_root)
@@ -115,6 +117,7 @@ def materialize_official_layouts(
     counts = defaultdict(int)
     geneval2_mapping = {}
     tiif_indices = defaultdict(set)
+    grid_jobs = []
     for (benchmark, prompt_index), group in prompt_groups.items():
         group.sort(key=lambda row: int(row["sample_index"]))
         sources = [output_path_for_record(image_root, row) for row in group]
@@ -128,7 +131,11 @@ def materialize_official_layouts(
         elif benchmark == "geneval2":
             geneval2_mapping[str(group[0]["prompt"])] = str(sources[0].resolve())
         elif benchmark == "dpgbench":
-            _grid(sources, layout_root / "dpgbench" / Path(metadata["source_id"]).with_suffix(".png"), format_name="PNG")
+            grid_jobs.append((
+                sources,
+                layout_root / "dpgbench" / Path(metadata["source_id"]).with_suffix(".png"),
+                "PNG",
+            ))
         elif benchmark in {"tiif_short", "tiif_long"}:
             variant = "short_description" if benchmark.endswith("short") else "long_description"
             dimension = str(metadata["dimension"])
@@ -140,7 +147,11 @@ def materialize_official_layouts(
                 _link(source, layout_root / benchmark / "images" / f"{prompt_index:05d}_{int(row['sample_index']):04d}.png")
         elif benchmark == "oneig_en":
             folder = ONEIG_FOLDERS[str(metadata["category"])]
-            _grid(sources, layout_root / "oneig_en" / folder / model_name / f"{metadata['id']}.webp", format_name="WEBP")
+            grid_jobs.append((
+                sources,
+                layout_root / "oneig_en" / folder / model_name / f"{metadata['id']}.webp",
+                "WEBP",
+            ))
         elif benchmark == "qwen_image_bench_en":
             _link(sources[0], layout_root / benchmark / "images" / f"{int(metadata['ID']):06d}.png")
         elif benchmark == "bizgeneval":
@@ -159,6 +170,11 @@ def materialize_official_layouts(
         else:
             raise ValueError(f"No official layout adapter for {benchmark}")
         counts[benchmark] += len(group)
+
+    if grid_workers <= 0:
+        raise ValueError("grid_workers must be positive")
+    with ThreadPoolExecutor(max_workers=grid_workers) as executor:
+        list(executor.map(lambda job: _grid(job[0], job[1], format_name=job[2]), grid_jobs))
 
     if geneval2_mapping:
         path = layout_root / "geneval2" / "image_paths.json"
