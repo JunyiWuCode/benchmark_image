@@ -8,6 +8,20 @@
     "longtext_en", "oneig_en", "qwen_image_bench_en", "bizgeneval",
     "t2i_corebench", "hpsv3_official"
   ],
+  "protocols": {
+    "geneval": {"prompts": 553, "samples_per_prompt": 4, "expected_images": 2212, "resolution_policy": "fallback_1024", "primary_metric": "overall"},
+    "geneval2": {"prompts": 800, "samples_per_prompt": 1, "expected_images": 800, "resolution_policy": "fallback_1024", "primary_metric": "soft_tifa_am_gm"},
+    "dpgbench": {"prompts": 1065, "samples_per_prompt": 4, "expected_images": 4260, "resolution_policy": "fallback_1024", "primary_metric": "dpg_score"},
+    "tiif_short": {"prompts": 2538, "samples_per_prompt": 1, "expected_images": 2538, "resolution_policy": "fallback_1024", "primary_metric": "tiif_short"},
+    "tiif_long": {"prompts": 2538, "samples_per_prompt": 1, "expected_images": 2538, "resolution_policy": "fallback_1024", "primary_metric": "tiif_long"},
+    "cvtg": {"prompts": 2000, "samples_per_prompt": 1, "expected_images": 2000, "resolution_policy": "fallback_1024", "primary_metric": "word_accuracy_ned_clipscore"},
+    "longtext_en": {"prompts": 160, "samples_per_prompt": 4, "expected_images": 640, "resolution_policy": "fallback_1024", "primary_metric": "text_score"},
+    "oneig_en": {"prompts": 1120, "samples_per_prompt": 4, "expected_images": 4480, "resolution_policy": "fallback_1024", "primary_metric": "oneig_score"},
+    "qwen_image_bench_en": {"prompts": 1000, "samples_per_prompt": 1, "expected_images": 1000, "resolution_policy": "fallback_1024", "primary_metric": "q_judger_overall"},
+    "bizgeneval": {"prompts": 400, "samples_per_prompt": 1, "expected_images": 400, "resolution_policy": "biz_dynamic_original", "primary_metric": "gemini_score"},
+    "t2i_corebench": {"prompts": 1080, "samples_per_prompt": 4, "expected_images": 4320, "resolution_policy": "fallback_1024", "primary_metric": "corebench_score"},
+    "hpsv3_official": {"prompts": 12000, "samples_per_prompt": 1, "expected_images": 12000, "resolution_policy": "hps_aspect_1024", "primary_metric": "hpsv3"}
+  },
   "sources": {
     "geneval": {"repository": "https://github.com/djghosh13/geneval.git", "revision": "af4902f24d3ca90ebbb446dd9891a59e0f82725f", "license": "MIT", "path": "prompts/evaluation_metadata.jsonl", "sha256": "5c48e0813e812e3c373fa5c8ed07a8f0a483be30272b4427b0559c8048e67c13", "records": 553},
     "geneval2": {"repository": "https://github.com/facebookresearch/GenEval2.git", "revision": "a6e82d2289e8d418f27f0adee77908b07060eea3", "license": "CC-BY-NC-4.0", "path": "geneval2_data.jsonl", "sha256": "09233adbc9f877fba205f1a20efa4a8640e7e62a91dfd55893562bed8a928e43", "records": 800},

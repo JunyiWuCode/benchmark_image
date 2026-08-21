@@ -21,6 +21,16 @@ from benchmark_image.official_suite import (
 def test_official_total_and_training_protocol_is_not_mutated():
     assert len(OFFICIAL_PROTOCOLS) == 12
     assert expected_image_count() == 37188
+    lock = __import__("benchmark_image.official_suite", fromlist=["load_source_lock"]).load_source_lock()
+    assert set(lock["protocols"]) == set(OFFICIAL_PROTOCOLS)
+    for name, protocol in OFFICIAL_PROTOCOLS.items():
+        assert lock["protocols"][name] == {
+            "prompts": protocol.prompts,
+            "samples_per_prompt": protocol.samples_per_prompt,
+            "expected_images": protocol.images,
+            "resolution_policy": protocol.resolution_policy,
+            "primary_metric": protocol.primary_metric,
+        }
     from benchmark_image.protocols import BENCHMARKS
 
     assert BENCHMARKS["geneval"].image_count == 2212
