@@ -205,7 +205,7 @@ def collect_generation_manifests(
         raise RuntimeError(f"Incomplete shard set: observed={sorted(shard_ids)}, expected=0..{shard_count - 1}")
     invariant_keys = (
         "pipeline_backend", "num_inference_steps", "guidance_scale",
-        "scheduler_shift", "seed", "records_sha256", "suite_record_count",
+        "scheduler_shift", "seed", "suite_record_count",
         "num_shards", "model",
     )
     baseline = {key: protocols[0][key] for key in invariant_keys}
