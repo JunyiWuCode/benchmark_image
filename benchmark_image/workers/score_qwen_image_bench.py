@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib
 import json
 import pickle
@@ -130,7 +129,6 @@ def _rank_output_complete(
     world_size: int,
     expected_ids: set[int],
     backend: str,
-    input_fingerprint: str,
 ) -> bool:
     judged_path = rank_root / "judged.jsonl"
     parsed_path = rank_root / "parsed_scores.jsonl"
@@ -148,23 +146,9 @@ def _rank_output_complete(
         and int(summary.get("world_size", -1)) == world_size
         and int(summary.get("num_rows", -1)) == len(expected_ids)
         and str(summary.get("backend", "pt")) == backend
-        and str(summary.get("input_fingerprint", "")) == input_fingerprint
         and judged_ids == expected_ids
         and parsed_ids == expected_ids
     )
-
-
-def _input_fingerprint(input_rows: list[dict]) -> str:
-    digest = hashlib.sha256()
-    for row in input_rows:
-        metadata = {key: row[key] for key in ("ID", "prompt", "artifact_id")}
-        digest.update(
-            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        )
-        with Path(row["image_path"]).open("rb") as image_file:
-            for chunk in iter(lambda: image_file.read(1024 * 1024), b""):
-                digest.update(chunk)
-    return digest.hexdigest()
 
 
 def score_shard(args) -> None:
@@ -181,7 +165,6 @@ def score_shard(args) -> None:
         }
         for row in shard_rows
     ]
-    input_fingerprint = _input_fingerprint(input_rows)
     rank_root = Path(args.output_dir) / f"rank_{args.rank:05d}"
     expected_ids = {row["ID"] for row in input_rows}
     if _rank_output_complete(
@@ -190,7 +173,6 @@ def score_shard(args) -> None:
         world_size=args.world_size,
         expected_ids=expected_ids,
         backend=args.backend,
-        input_fingerprint=input_fingerprint,
     ):
         print(
             f"Q-Judger rank {args.rank}/{args.world_size} is already complete; "
@@ -209,7 +191,6 @@ def score_shard(args) -> None:
                     "parse_failures": 0,
                     "image_failures": 0,
                     "backend": args.backend,
-                    "input_fingerprint": input_fingerprint,
                 },
                 indent=2,
             ),
@@ -275,7 +256,6 @@ def score_shard(args) -> None:
                 "parse_failures": int(parse_failures),
                 "image_failures": int(image_failures),
                 "backend": args.backend,
-                "input_fingerprint": input_fingerprint,
             },
             indent=2,
         ),
