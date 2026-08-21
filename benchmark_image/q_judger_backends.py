@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -66,9 +65,7 @@ def _prepend_runtime_bin() -> None:
 
 def _vllm_model_compat_path(model_path: str) -> str:
     source = Path(model_path).resolve()
-    digest = hashlib.sha256(str(source).encode("utf-8")).hexdigest()[:12]
-    target = Path(tempfile.gettempdir()) / f"q_judger_vllm_{digest}"
-    target.mkdir(parents=True, exist_ok=True)
+    target = Path(tempfile.mkdtemp(prefix=f"q_judger_vllm_{source.name}_"))
     for source_path in source.iterdir():
         target_path = target / source_path.name
         if source_path.is_file() and not target_path.exists():

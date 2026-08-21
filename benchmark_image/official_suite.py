@@ -9,7 +9,6 @@ the training-time evaluator unless a caller explicitly imports it.
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 import math
 import re
@@ -75,26 +74,6 @@ def normalize_benchmarks(benchmarks: Iterable[str] | None = None) -> tuple[str, 
     return names
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _tree_sha256(path: Path) -> tuple[str, int]:
-    digest = hashlib.sha256()
-    paths = sorted(
-        item for item in path.rglob("*")
-        if item.is_file() and item.name != ".DS_Store"
-    )
-    for item in paths:
-        relative = item.relative_to(path).as_posix().encode()
-        data = item.read_bytes()
-        digest.update(len(relative).to_bytes(8, "big"))
-        digest.update(relative)
-        digest.update(len(data).to_bytes(8, "big"))
-        digest.update(data)
-    return digest.hexdigest(), len(paths)
-
-
 def _git_head(path: Path) -> str | None:
     try:
         return subprocess.run(
@@ -123,8 +102,9 @@ def verify_sources(source_dirs: Mapping[str, str | Path]) -> dict:
 
     ``source_dirs`` maps lock source names to checkout roots.  The CVTG and
     Qwen prompt files are shipped by this package, so those two keys are not
-    required.  A source checkout may be newer only if its locked file bytes
-    remain identical; the result records both the requested and observed HEAD.
+    required. External repositories are locked by revision during setup. This
+    check confirms the expected path, directory file count, and observed Git
+    revision when one is available.
     """
     lock = load_source_lock()
     results = {}
@@ -142,25 +122,30 @@ def verify_sources(source_dirs: Mapping[str, str | Path]) -> dict:
             root = Path(source_dirs[name]).resolve()
             target = _source_file(root, spec["path"])
         if target.is_dir():
-            observed, file_count = _tree_sha256(target)
-            expected = spec["tree_sha256"]
+            file_count = len([
+                item for item in target.rglob("*")
+                if item.is_file() and item.name != ".DS_Store"
+            ])
             if file_count != int(spec["files"]):
                 raise RuntimeError(
                     f"{name} file count mismatch: {file_count} != {spec['files']}"
                 )
         else:
-            observed, expected = _sha256(target), spec["sha256"]
             file_count = 1
-        if observed != expected:
+        observed_revision = (
+            _git_head(root if root and root.is_dir() else root.parent)
+            if root else "packaged"
+        )
+        if observed_revision not in (None, "packaged", spec["revision"]):
             raise RuntimeError(
-                f"{name} source hash mismatch: observed={observed}, expected={expected}, path={target}"
+                f"{name} source revision mismatch: observed={observed_revision}, "
+                f"expected={spec['revision']}, path={target}"
             )
         results[name] = {
             "path": str(target),
-            "sha256": observed,
             "files": file_count,
             "locked_revision": spec["revision"],
-            "observed_revision": _git_head(root if root and root.is_dir() else root.parent) if root else "packaged",
+            "observed_revision": observed_revision,
         }
     return results
 
@@ -499,11 +484,9 @@ def write_records(path: str | Path, records: Iterable[Mapping]) -> dict:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
-    digest = hashlib.sha256()
     with path.open("w", encoding="utf-8") as handle:
         for row in records:
             line = json.dumps(dict(row), ensure_ascii=False, sort_keys=True) + "\n"
             handle.write(line)
-            digest.update(line.encode())
             count += 1
-    return {"path": str(path), "records": count, "sha256": digest.hexdigest()}
+    return {"path": str(path), "records": count}

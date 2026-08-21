@@ -15,6 +15,7 @@ from benchmark_image.official_suite import (
     hps_aspect_1024,
     output_path_for_record,
     select_coverage_smoke,
+    write_records,
 )
 
 
@@ -35,6 +36,15 @@ def test_official_total_and_training_protocol_is_not_mutated():
 
     assert BENCHMARKS["geneval"].image_count == 2212
     assert "dpgbench" not in BENCHMARKS
+
+
+def test_official_lock_and_record_handoff_do_not_use_content_hashes(tmp_path: Path):
+    module = Path(__import__("benchmark_image.official_suite", fromlist=["__file__"]).__file__)
+    lock = module.parent / "assets/source_locks/zimage_base_english_official_v1.json"
+    assert "sha256" not in module.read_text(encoding="utf-8").lower()
+    assert "sha256" not in lock.read_text(encoding="utf-8").lower()
+    summary = write_records(tmp_path / "records.jsonl", [{"prompt": "one"}])
+    assert summary == {"path": str(tmp_path / "records.jsonl"), "records": 1}
 
 
 @pytest.mark.parametrize(
