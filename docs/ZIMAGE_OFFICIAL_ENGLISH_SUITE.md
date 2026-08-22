@@ -20,6 +20,11 @@ Qwen-Image-Bench prompts are verified from the package assets.
 `--coverage-smoke` produces the stratified smoke set while retaining all four
 samples for benchmarks whose official protocol requires them.
 
+`--fallback-resolution N` changes only records labeled with a fallback square
+resolution. Benchmark-owned policies such as HPSv3's aspect-aware 1024 sizing
+and BizGenEval's dynamic-original sizing remain unchanged. The default is 1024
+for backward compatibility.
+
 After standalone generation:
 
 ```bash

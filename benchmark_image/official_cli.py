@@ -45,6 +45,7 @@ def _parser() -> argparse.ArgumentParser:
         child.add_argument("--benchmark", action="append", choices=tuple(OFFICIAL_PROTOCOLS))
         if command == "export-records":
             child.add_argument("--profile", choices=("official_report", "training_monitor"), default="official_report")
+            child.add_argument("--fallback-resolution", type=int, default=1024)
             child.add_argument("--smoke-max-prompts-per-benchmark", type=int)
             child.add_argument("--coverage-smoke", action="store_true")
             child.add_argument("--output", type=Path, required=True)
@@ -55,6 +56,12 @@ def _parser() -> argparse.ArgumentParser:
         if command == "materialize-layouts":
             child.add_argument("--layout-root", type=Path, required=True)
             child.add_argument("--model-name", default="Z-Image-Base-cfg4-nfe50")
+        if command == "collect-generation":
+            child.add_argument(
+                "--existence-only",
+                action="store_true",
+                help="Check that every generated file exists without reopening every image.",
+            )
     return parser
 
 
@@ -77,7 +84,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.command in {"audit-images", "collect-generation", "materialize-layouts"}:
         records = read_records(args.records)
         if args.command == "collect-generation":
-            print(json.dumps(collect_generation_manifests(records, args.image_root), indent=2))
+            print(json.dumps(
+                collect_generation_manifests(
+                    records,
+                    args.image_root,
+                    verify_images=not args.existence_only,
+                ),
+                indent=2,
+            ))
             return
         audit = audit_raw_images(records, args.image_root)
         if not audit["complete"]:
@@ -97,6 +111,7 @@ def main(argv: list[str] | None = None) -> None:
         args.benchmark,
         profile=args.profile,
         smoke_max_prompts_per_benchmark=args.smoke_max_prompts_per_benchmark,
+        fallback_resolution=args.fallback_resolution,
     )
     if args.coverage_smoke:
         if args.profile != "official_report" or args.smoke_max_prompts_per_benchmark is not None:
@@ -109,6 +124,7 @@ def main(argv: list[str] | None = None) -> None:
             "profile": args.profile,
             "smoke_max_prompts_per_benchmark": args.smoke_max_prompts_per_benchmark,
             "coverage_smoke": args.coverage_smoke,
+            "fallback_resolution": args.fallback_resolution,
             "reportable": args.profile == "official_report" and args.smoke_max_prompts_per_benchmark is None and not args.coverage_smoke,
         }
     )

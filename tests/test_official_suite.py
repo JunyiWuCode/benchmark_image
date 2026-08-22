@@ -86,6 +86,29 @@ def test_smoke_keeps_official_sample_multiplicity(tmp_path: Path):
     assert output_path_for_record(tmp_path, records[0]).name == "000000_00.png"
 
 
+def test_fallback_resolution_override_is_explicit_and_scoped(tmp_path: Path):
+    root = tmp_path / "geneval"
+    prompts = root / "prompts"
+    prompts.mkdir(parents=True)
+    (prompts / "evaluation_metadata.jsonl").write_text(
+        "".join(json.dumps({"prompt": str(index)}) + "\n" for index in range(553)),
+        encoding="utf-8",
+    )
+    records = build_records(
+        {"geneval": root},
+        ["geneval"],
+        fallback_resolution=512,
+    )
+    assert {(row["height"], row["width"]) for row in records} == {(512, 512)}
+    assert {row["resolution_policy"] for row in records} == {"fallback_512"}
+
+
+@pytest.mark.parametrize("value", (0, 510))
+def test_fallback_resolution_override_rejects_invalid_values(value):
+    with pytest.raises(ValueError, match="positive multiple of 16"):
+        build_records({}, ["qwen_image_bench_en"], fallback_resolution=value)
+
+
 def test_training_monitor_reduces_to_one_image_per_prompt(tmp_path: Path):
     root = tmp_path / "geneval2"
     root.mkdir()
