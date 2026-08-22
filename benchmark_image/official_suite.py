@@ -323,6 +323,7 @@ def build_records(
     profile: str = "official_report",
     smoke_max_prompts_per_benchmark: int | None = None,
     fallback_resolution: int = 1024,
+    hps_resolution: int | None = None,
 ) -> list[dict]:
     """Build deterministic image-level records for generation.
 
@@ -335,6 +336,10 @@ def build_records(
     fallback_resolution = int(fallback_resolution)
     if fallback_resolution <= 0 or fallback_resolution % 16:
         raise ValueError("fallback_resolution must be a positive multiple of 16")
+    if hps_resolution is not None:
+        hps_resolution = int(hps_resolution)
+        if hps_resolution <= 0 or hps_resolution % 16:
+            raise ValueError("hps_resolution must be a positive multiple of 16")
     names = normalize_benchmarks(benchmarks)
     sources = {name: Path(path).resolve() for name, path in source_dirs.items()}
     output = []
@@ -347,6 +352,11 @@ def build_records(
                 row["height"] = fallback_resolution
                 row["width"] = fallback_resolution
                 row["resolution_policy"] = f"fallback_{fallback_resolution}"
+        elif name == "hpsv3_official" and hps_resolution is not None:
+            for row in records:
+                row["height"] = hps_resolution
+                row["width"] = hps_resolution
+                row["resolution_policy"] = f"hps_square_{hps_resolution}_override"
         if len(records) != protocol.prompts * samples:
             raise RuntimeError(
                 f"{name} expanded to {len(records)} images; expected {protocol.prompts * samples}"

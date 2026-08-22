@@ -25,6 +25,11 @@ resolution. Benchmark-owned policies such as HPSv3's aspect-aware 1024 sizing
 and BizGenEval's dynamic-original sizing remain unchanged. The default is 1024
 for backward compatibility.
 
+`--hps-resolution N` explicitly replaces HPSv3's aspect-aware 1024 generation
+sizes with square `N x N` inputs while keeping the official prompts and scorer.
+The emitted `hps_square_N_override` policy makes that experimental setting
+unambiguous; omitting the option keeps the official sizing.
+
 After standalone generation:
 
 ```bash

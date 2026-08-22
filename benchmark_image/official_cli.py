@@ -46,6 +46,12 @@ def _parser() -> argparse.ArgumentParser:
         if command == "export-records":
             child.add_argument("--profile", choices=("official_report", "training_monitor"), default="official_report")
             child.add_argument("--fallback-resolution", type=int, default=1024)
+            child.add_argument(
+                "--hps-resolution",
+                type=int,
+                default=0,
+                help="Override HPSv3 generation with a square size; 0 keeps official aspect-1024.",
+            )
             child.add_argument("--smoke-max-prompts-per-benchmark", type=int)
             child.add_argument("--coverage-smoke", action="store_true")
             child.add_argument("--output", type=Path, required=True)
@@ -112,6 +118,7 @@ def main(argv: list[str] | None = None) -> None:
         profile=args.profile,
         smoke_max_prompts_per_benchmark=args.smoke_max_prompts_per_benchmark,
         fallback_resolution=args.fallback_resolution,
+        hps_resolution=args.hps_resolution or None,
     )
     if args.coverage_smoke:
         if args.profile != "official_report" or args.smoke_max_prompts_per_benchmark is not None:
@@ -125,6 +132,7 @@ def main(argv: list[str] | None = None) -> None:
             "smoke_max_prompts_per_benchmark": args.smoke_max_prompts_per_benchmark,
             "coverage_smoke": args.coverage_smoke,
             "fallback_resolution": args.fallback_resolution,
+            "hps_resolution": args.hps_resolution,
             "reportable": args.profile == "official_report" and args.smoke_max_prompts_per_benchmark is None and not args.coverage_smoke,
         }
     )

@@ -109,6 +109,29 @@ def test_fallback_resolution_override_rejects_invalid_values(value):
         build_records({}, ["qwen_image_bench_en"], fallback_resolution=value)
 
 
+def test_hps_square_resolution_override_is_explicit(tmp_path: Path):
+    root = tmp_path / "hps"
+    benchmark = root / "benchmark"
+    benchmark.mkdir(parents=True)
+    (benchmark / "benchmark_test.json").write_text(
+        json.dumps([
+            {"caption": f"prompt {index}", "aspect_ratio": 1.0}
+            for index in range(12000)
+        ]),
+        encoding="utf-8",
+    )
+    records = build_records(
+        {"hpsv3_official": root},
+        ["hpsv3_official"],
+        fallback_resolution=512,
+        hps_resolution=512,
+    )
+    assert {(row["height"], row["width"]) for row in records} == {(512, 512)}
+    assert {row["resolution_policy"] for row in records} == {
+        "hps_square_512_override"
+    }
+
+
 def test_training_monitor_reduces_to_one_image_per_prompt(tmp_path: Path):
     root = tmp_path / "geneval2"
     root.mkdir()
